@@ -11,6 +11,7 @@ pub mod capture_import;
 pub mod capture_sanitize;
 pub mod commands;
 pub mod debug_ws;
+#[cfg(not(target_os = "android"))]
 pub mod debug_ws_server;
 pub mod energy_rollup;
 mod error;
