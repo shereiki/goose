@@ -70,6 +70,16 @@ Plans:
 
 ## Backlog
 
+### Phase 08.1: Close gap WEAR-01/WEAR-03: integrate parse_hr_measurement into upload.get_recent_decoded_streams so HR monitor uploads contain decoded hr/rr stream data (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 08.1 to break down)
+
 ### Phase 999.4: Recovery V2 Completion (BACKLOG)
 
 **Goal:** Complete the Recovery V2 dashboard with real bridge-backed data, replacing placeholder/zero values with trusted packet-derived metrics.

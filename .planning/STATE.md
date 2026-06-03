@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Multi-Device & Platform Foundations
-status: ready_to_plan
-last_updated: 2026-06-03T23:20:37.013Z
-last_activity: 2026-06-03 -- Phase 08 execution started
+status: planning
+last_updated: "2026-06-03T23:30:33.103Z"
+last_activity: 2026-06-03
 progress:
-  total_phases: 7
-  completed_phases: 1
+  total_phases: 8
+  completed_phases: 3
   total_plans: 11
   completed_plans: 11
-  percent: 14
-stopped_at: Phase 07 complete (4/4) — ready to discuss Phase 08
+  percent: 38
 ---
 
 # Project State
@@ -60,6 +59,10 @@ Phase 8 [          ] 0%   Additional Wearables E2E
 *Updated after each plan completion*
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 08.1 inserted after Phase 8: Close gap WEAR-01/WEAR-03: integrate parse_hr_measurement into upload pipeline (URGENT)
 
 ### Decisions
 
