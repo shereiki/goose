@@ -18,13 +18,31 @@ extension GooseAppModel {
   }
 
   func triggerManualUpload() {
-    let deviceID = ble.activeDeviceIdentifier ?? UUID()
     let sinceTimestamp = lastUploadAt ?? Date().addingTimeInterval(-24 * 3600)
-    uploadService.upload(
-      deviceID: deviceID,
-      deviceType: "GOOSE",
-      sinceTimestamp: sinceTimestamp
-    )
+
+    // WHOOP upload: derive device type from the active descriptor's command characteristic prefix.
+    // Gen4 uses a 61080002- prefix; Gen5 uses fd4b0002-. Fall back to GOOSE when no descriptor is set.
+    if let whoopID = ble.activeDeviceIdentifier {
+      let whoopType: String
+      if let desc = ble.activeDescriptor {
+        whoopType = desc.commandCharacteristicPrefix.hasPrefix("610800") ? "GEN4" : "GOOSE"
+      } else {
+        whoopType = "GOOSE"
+      }
+      uploadService.upload(deviceID: whoopID, deviceType: whoopType, sinceTimestamp: sinceTimestamp)
+    }
+
+    // HR monitor upload: trigger when an HR monitor is connected, using the sanitized device name.
+    // The upload service default case tags this payload with device_class: "HR_MONITOR".
+    let hrManager = ble.hrMonitorManager
+    if hrManager.hrConnectionState != "disconnected", let hrPeripheral = hrManager.hrPeripheral {
+      let hrDeviceType = hrManager.connectedDeviceName ?? "unknown_hr_monitor"
+      uploadService.upload(
+        deviceID: hrPeripheral.identifier,
+        deviceType: hrDeviceType,
+        sinceTimestamp: sinceTimestamp
+      )
+    }
   }
 
   func triggerUpload(for result: CaptureFrameWriteResult, deviceEvent: GooseNotificationEvent) {
