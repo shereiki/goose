@@ -1,43 +1,47 @@
-# Whoop stack: TimescaleDB datastore + FastAPI ingest service.
-# Raw frames archived under ${DATA_ROOT}/whoop/raw; DB data under ${DATA_ROOT}/whoop/db.
-# Set DATA_ROOT in your environment (or .env) before `docker compose up`.
+# Goose stack: TimescaleDB datastore + FastAPI ingest service.
+# Uses named Docker volumes for data persistence.
+# Copy .env.example to .env and fill in before `docker compose up`.
 services:
-  whoop-db:
+  goose-db:
     image: timescale/timescaledb:2.17.2-pg16
-    container_name: whoop-db
+    container_name: goose-db
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=${WHOOP_DB_NAME:-whoop}
-      - POSTGRES_USER=${WHOOP_DB_USER:-whoop}
-      - POSTGRES_PASSWORD=${WHOOP_DB_PASSWORD}
+      - POSTGRES_DB=${GOOSE_DB_NAME:-goose}
+      - POSTGRES_USER=${GOOSE_DB_USER:-goose}
+      - POSTGRES_PASSWORD=${GOOSE_DB_PASSWORD}
       - TZ=${TZ:-UTC}
     volumes:
-      - ${DATA_ROOT}/whoop/db:/var/lib/postgresql/data
+      - goose-db-data:/var/lib/postgresql/data
       # init.sql runs ONLY on first init (empty data dir). The ingest service also
       # bootstraps the schema idempotently on startup, so re-runs are safe.
       - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${WHOOP_DB_USER:-whoop} -d ${WHOOP_DB_NAME:-whoop}"]
+      test: ["CMD-SHELL", "pg_isready -U ${GOOSE_DB_USER:-goose} -d ${GOOSE_DB_NAME:-goose}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  whoop-ingest:
+  goose-ingest:
     build:
       # server/ dir, so the image can COPY packages/whoop-protocol
       context: .
       dockerfile: ingest/Dockerfile
-    container_name: whoop-ingest
+    container_name: goose-ingest
     restart: unless-stopped
     depends_on:
-      whoop-db:
+      goose-db:
         condition: service_healthy
     environment:
-      - WHOOP_API_KEY=${WHOOP_API_KEY}
-      - WHOOP_DB_DSN=postgresql://${WHOOP_DB_USER:-whoop}:${WHOOP_DB_PASSWORD}@whoop-db:5432/${WHOOP_DB_NAME:-whoop}
-      - WHOOP_RAW_ROOT=/data/raw
+      - GOOSE_API_KEY=${GOOSE_API_KEY}
+      - GOOSE_DB_DSN=postgresql://${GOOSE_DB_USER:-goose}:${GOOSE_DB_PASSWORD}@goose-db:5432/${GOOSE_DB_NAME:-goose}
+      - GOOSE_RAW_ROOT=/data/raw
       - TZ=${TZ:-UTC}
     volumes:
-      - ${DATA_ROOT}/whoop/raw:/data/raw
+      - goose-raw-data:/data/raw
     ports:
-      - "${WHOOP_INGEST_PORT:-8770}:8000"
+      - "${GOOSE_INGEST_PORT:-8770}:8000"
+
+volumes:
+  goose-db-data:
+  goose-raw-data:
