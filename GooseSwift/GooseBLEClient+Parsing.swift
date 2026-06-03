@@ -334,6 +334,9 @@ extension GooseBLEClient {
   }
 
   // Gen4 service UUID prefix 61080001-, Gen5 prefix fd4b0001-
+  // WearableDescriptor stores prefix constants in lowercase; lowercased() is applied defensively
+  // here even though CBUUID.uuidString always returns uppercase on iOS (CoreBluetooth contract),
+  // keeping the comparison convention consistent with isCommandCharacteristic and debugMenuCandidate.
   static func generation(from serviceUUIDs: [CBUUID]) -> String {
     for uuid in serviceUUIDs {
       let lower = uuid.uuidString.lowercased()

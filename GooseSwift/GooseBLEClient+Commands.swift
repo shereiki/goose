@@ -144,20 +144,39 @@ extension GooseBLEClient {
     }
   }
 
+  /// Returns true when the active command characteristic is confirmed for the connected wearable generation.
+  /// If activeDescriptor is nil (e.g. cached-restore path set commandCharacteristic before
+  /// processDiscoveredCharacteristics ran), falls back to UUID membership in commandCharacteristicIDs
+  /// and logs a warning so the race is visible in diagnostics.
+  private func commandCharacteristicIsValid(_ characteristic: CBCharacteristic) -> Bool {
+    if let desc = activeDescriptor {
+      return desc.isCommandCharacteristic(characteristic)
+    }
+    // activeDescriptor is unexpectedly nil while commandCharacteristic is set; allow the known
+    // command UUIDs to pass so commands are not silently blocked during the setup race window.
+    record(
+      level: .warn,
+      source: "ble",
+      title: "command_characteristic.descriptor_nil",
+      body: "commandCharacteristic=\(characteristic.uuid.uuidString) falling back to UUID membership check"
+    )
+    return commandCharacteristicIDs.contains(characteristic.uuid)
+  }
+
   var supportsHistoricalSync: Bool {
-    commandCharacteristic.map { activeDescriptor?.isCommandCharacteristic($0) == true } == true
+    commandCharacteristic.map { commandCharacteristicIsValid($0) } == true
   }
 
   var supportsAlarmCommands: Bool {
-    commandCharacteristic.map { activeDescriptor?.isCommandCharacteristic($0) == true } == true
+    commandCharacteristic.map { commandCharacteristicIsValid($0) } == true
   }
 
   var supportsClockCommands: Bool {
-    commandCharacteristic.map { activeDescriptor?.isCommandCharacteristic($0) == true } == true
+    commandCharacteristic.map { commandCharacteristicIsValid($0) } == true
   }
 
   var supportsSensorCommands: Bool {
-    commandCharacteristic.map { activeDescriptor?.isCommandCharacteristic($0) == true } == true
+    commandCharacteristic.map { commandCharacteristicIsValid($0) } == true
   }
 
   func shouldUseCommandCharacteristic(_ characteristic: CBCharacteristic) -> Bool {
