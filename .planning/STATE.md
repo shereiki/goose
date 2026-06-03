@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-06-03)
 Phase: Not started (defining requirements)
 Plan: —
 Status: Defining requirements
-Last activity: 2026-06-03 — Milestone v2.0 started
+Last activity: 2026-06-03 — Completed quick task 260603-rls: adicionar codeql no git
 
 ## Performance Metrics
 
@@ -69,6 +69,12 @@ None yet.
 
 - **ATS hostname:** Decidir estratégia de hostname antes da Phase 3 (mDNS `whoop.local`, DNS real, ou hostname local) — documentar na Phase 2 settings UI
 - **PR #12 FFI threading:** Ler diff completo antes de planear Phase 5 — risco elevado de conflito com Phase 3
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260603-rls | adicionar codeql no git | 2026-06-03 | 13e3498 | [260603-rls-adicionar-codeql-no-git](.planning/quick/260603-rls-adicionar-codeql-no-git/) |
 
 ## Deferred Items
 
