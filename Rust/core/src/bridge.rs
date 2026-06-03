@@ -3069,8 +3069,8 @@ fn upload_get_recent_decoded_streams_bridge(
             // SQLite belong to one physical device, so no per-row filtering is needed.
         }
 
-        let parsed: Option<ParsedPayload> = serde_json::from_str(&frame.parsed_payload_json)
-            .unwrap_or(None);
+        let parsed: Option<ParsedPayload> =
+            serde_json::from_str(&frame.parsed_payload_json).unwrap_or(None);
 
         match parsed {
             Some(ParsedPayload::DataPacket {
@@ -3098,10 +3098,7 @@ fn upload_get_recent_decoded_streams_bridge(
                                 }
                             }
                         }
-                        DataPacketBodySummary::RawMotionK10 {
-                            heart_rate,
-                            ..
-                        } => {
+                        DataPacketBodySummary::RawMotionK10 { heart_rate, .. } => {
                             // k10 raw motion carries an HR byte
                             if let (Some(ts), Some(bpm)) = (ts_unix, heart_rate) {
                                 hr.push(json!({"ts": ts, "bpm": *bpm}));
@@ -3130,7 +3127,9 @@ fn upload_get_recent_decoded_streams_bridge(
             }) => {
                 // EVENT packets: wall-clock unix seconds (real RTC, not device epoch)
                 let ts_unix: Option<f64> = timestamp_seconds.map(|s| s as f64);
-                let kind = event_name.clone().or_else(|| event_id.map(|id| format!("event_{id}")));
+                let kind = event_name
+                    .clone()
+                    .or_else(|| event_id.map(|id| format!("event_{id}")));
 
                 events.push(json!({
                     "ts": ts_unix,
