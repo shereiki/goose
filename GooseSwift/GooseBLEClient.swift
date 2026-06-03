@@ -89,6 +89,7 @@ final class GooseBLEClient: NSObject, ObservableObject, @unchecked Sendable {
     maximumMessages: GooseBLEClient.maximumDisplayedMessages,
     flushInterval: GooseBLEClient.displayedMessageFlushInterval
   )
+  let hrMonitorManager = GooseBLEHRMonitorManager()
   let notificationContextLock = NSLock()
   var notificationContextActiveDeviceName = "WHOOP"
   var notificationContextConnectionState = "disconnected"
