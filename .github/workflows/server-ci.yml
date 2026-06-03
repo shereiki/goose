@@ -41,6 +41,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Install local packages
+        run: pip install -e ../../packages/whoop-protocol
+
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
