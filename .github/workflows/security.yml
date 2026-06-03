@@ -18,11 +18,15 @@ on:
     paths:
       - "Rust/core/Cargo.toml"
       - "Rust/core/Cargo.lock"
+      - "server/ingest/Dockerfile"
+      - "server/ingest/requirements.txt"
       - ".github/workflows/security.yml"
   pull_request:
     paths:
       - "Rust/core/Cargo.toml"
       - "Rust/core/Cargo.lock"
+      - "server/ingest/Dockerfile"
+      - "server/ingest/requirements.txt"
       - ".github/workflows/security.yml"
   schedule:
     - cron: "0 7 * * 1" # Mondays at 07:00 UTC
