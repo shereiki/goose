@@ -257,8 +257,8 @@ def _load_streams(conn, device_id: str, start: float, end: float) -> dict[str, l
         rows = read.query_stream(conn, kind, device_id, int(start), int(end) - 1, limit=_STREAM_LIMIT)
         if len(rows) == _STREAM_LIMIT:
             _log.warning(
-                "stream %s for device %s hit the per-stream cap (%d rows); "
-                "window data may be truncated", kind, device_id, _STREAM_LIMIT)
+                "stream %s hit the per-stream cap (%d rows); "
+                "window data may be truncated", kind, _STREAM_LIMIT)
         for r in rows:
             r["ts"] = to_epoch(r["ts"])
         streams[kind] = rows

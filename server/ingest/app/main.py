@@ -354,8 +354,8 @@ def backfill_workouts(body: BackfillWorkouts):
                                 "exercises": result.get("exercises", [])})
             except Exception as exc:
                 conn.rollback()
-                _log.exception("backfill-workouts compute_day failed for %s %s", body.device, day)
-                results.append({"date": day.isoformat(), "status": "error", "detail": str(exc)})
+                _log.exception("backfill-workouts compute_day failed for device day=%s", day)
+                results.append({"date": day.isoformat(), "status": "error", "detail": type(exc).__name__})
             day += _dt.timedelta(days=1)
     return {"recomputed": len(results), "days": results}
 
