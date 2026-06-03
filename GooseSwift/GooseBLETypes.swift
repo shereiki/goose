@@ -11,6 +11,10 @@ struct WearableDescriptor {
   func isCommandCharacteristic(_ c: CBCharacteristic) -> Bool {
     c.uuid.uuidString.lowercased().hasPrefix(commandCharacteristicPrefix)
   }
+
+  func isCommandUUID(_ uuid: CBUUID) -> Bool {
+    uuid.uuidString.lowercased().hasPrefix(commandCharacteristicPrefix)
+  }
 }
 
 extension WearableDescriptor {
