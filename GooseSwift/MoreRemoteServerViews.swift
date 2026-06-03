@@ -31,6 +31,11 @@ final class MoreRemoteServerViewModel: ObservableObject {
 
 struct MoreRemoteServerView: View {
   @StateObject private var vm = MoreRemoteServerViewModel()
+  @EnvironmentObject private var model: GooseAppModel
+
+  private var uploadIsActive: Bool {
+    vm.uploadEnabled && !vm.serverURL.isEmpty
+  }
 
   var body: some View {
     Form {
@@ -56,6 +61,49 @@ struct MoreRemoteServerView: View {
         Toggle("Enable Upload", isOn: $vm.uploadEnabled)
       }
 
+      if uploadIsActive {
+        Section("Status") {
+          // Row 1: Server reachability
+          Label {
+            switch model.serverReachable {
+            case .none:
+              Text("A verificar...").foregroundStyle(.secondary)
+            case .some(true):
+              Text("Servidor acessível").foregroundStyle(.green)
+            case .some(false):
+              Text("Servidor inacessível").foregroundStyle(.red)
+            }
+          } icon: {
+            switch model.serverReachable {
+            case .none:
+              ProgressView().scaleEffect(0.7)
+            case .some(true):
+              Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            case .some(false):
+              Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+            }
+          }
+
+          // Row 2: Last upload timestamp
+          if let lastUpload = model.lastUploadAt {
+            LabeledContent("Último upload") {
+              Text(RelativeDateTimeFormatter().localizedString(for: lastUpload, relativeTo: Date()))
+                .foregroundStyle(.secondary)
+            }
+          } else {
+            LabeledContent("Último upload") {
+              Text("Nunca").foregroundStyle(.secondary)
+            }
+          }
+
+          // Row 3: Pending batch count
+          LabeledContent("Batches pendentes") {
+            Text("\(model.pendingBatchCount)")
+              .foregroundStyle(model.pendingBatchCount > 0 ? .orange : .secondary)
+          }
+        }
+      }
+
       Section {
         Button("Save") {
           vm.save()
@@ -72,4 +120,45 @@ struct MoreRemoteServerView: View {
       Button("OK") {}
     }
   }
+}
+
+// MARK: - Previews
+
+#Preview("Status — A verificar") {
+  NavigationStack {
+    MoreRemoteServerView()
+  }
+  .environmentObject({
+    let m = GooseAppModel()
+    m.serverReachable = nil
+    m.lastUploadAt = nil
+    m.pendingBatchCount = 0
+    return m
+  }())
+}
+
+#Preview("Status — Acessível") {
+  NavigationStack {
+    MoreRemoteServerView()
+  }
+  .environmentObject({
+    let m = GooseAppModel()
+    m.serverReachable = true
+    m.lastUploadAt = Date().addingTimeInterval(-120)
+    m.pendingBatchCount = 0
+    return m
+  }())
+}
+
+#Preview("Status — Inacessível") {
+  NavigationStack {
+    MoreRemoteServerView()
+  }
+  .environmentObject({
+    let m = GooseAppModel()
+    m.serverReachable = false
+    m.lastUploadAt = nil
+    m.pendingBatchCount = 2
+    return m
+  }())
 }
