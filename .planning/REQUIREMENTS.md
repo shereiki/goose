@@ -91,15 +91,15 @@ As a developer, I want the server pytest suite to run on CI, so that server regr
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GEN4-01 | Phase 6 | — |
-| GEN4-02 | Phase 6 | — |
-| GEN4-03 | Phase 6 | — |
-| GEN4-04 | Phase 6 | — |
-| GEN4-05 | Phase 6 | — |
-| ANDROID-01 | Phase 7 | — |
-| ANDROID-02 | Phase 7 | — |
-| ANDROID-03 | Phase 7 | — |
-| WEAR-01 | Phase 8 | — |
-| WEAR-02 | Phase 8 | — |
-| WEAR-03 | Phase 8 | — |
-| CI-01 | Phase 7 or standalone | — |
+| GEN4-01 | Phase 6 | Pending |
+| GEN4-02 | Phase 6 | Pending |
+| GEN4-03 | Phase 6 | Pending |
+| GEN4-04 | Phase 6 | Pending |
+| GEN4-05 | Phase 6 | Pending |
+| ANDROID-01 | Phase 7 | Pending |
+| ANDROID-02 | Phase 7 | Pending |
+| ANDROID-03 | Phase 7 | Pending |
+| CI-01 | Phase 7 | Pending |
+| WEAR-01 | Phase 8 | Pending |
+| WEAR-02 | Phase 8 | Pending |
+| WEAR-03 | Phase 8 | Pending |

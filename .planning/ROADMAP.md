@@ -3,6 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Remote Server + Upstream PRs** — Phases 1-5 (shipped 2026-06-03)
+- ⬜ **v2.0 Multi-Device & Platform Foundations** — Phases 6-8
 
 ## Phases
 
@@ -19,6 +20,48 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 
 </details>
 
+**v2.0 Multi-Device & Platform Foundations**
+
+- [ ] **Phase 6: WHOOP Gen4 iOS Support** - iOS app layer changes to expose full Gen4 connect/capture/upload
+- [ ] **Phase 7: Android Port Foundations + CI** - Rust core cross-compiles to Android; JNI shim; ADR; server CI
+- [ ] **Phase 8: Additional Wearables E2E** - Standard HR GATT device supported BLE to SQLite to upload
+
+## Phase Details
+
+### Phase 6: WHOOP Gen4 iOS Support
+**Goal**: Users with a WHOOP 4.0 can connect, capture, and upload data with the same experience as WHOOP 5.0 users
+**Depends on**: Phase 3 (upload client already shipped in v1.0)
+**Requirements**: GEN4-01, GEN4-02, GEN4-03, GEN4-04, GEN4-05
+**Success Criteria** (what must be TRUE):
+  1. A user with a WHOOP 4.0 can connect the device and have historical sync and overnight mode work (the `supportsV5*` guards accept the Gen4 command characteristic UUID prefix `61080002-`)
+  2. The app model exposes a `generation` field ("4.0" or "5.0") derived from the advertised BLE service UUID, visible to the UI and upload service
+  3. Onboarding copy references WHOOP 4.0 alongside WHOOP 5.0
+  4. The connected device view displays a generation label ("Gen 4" or "Gen 5") while connected
+  5. Upload payload contains `device_generation: "4.0"` for Gen4 captures, verified by a unit or integration test
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 7: Android Port Foundations + CI
+**Goal**: The Rust core cross-compiles cleanly to `aarch64-linux-android`, a thin JNI shim is in place, an ADR documents the architecture choices, and the server pytest suite runs on CI
+**Depends on**: Nothing (independent of Phases 6 and 8 — different file sets)
+**Requirements**: ANDROID-01, ANDROID-02, ANDROID-03, CI-01
+**Success Criteria** (what must be TRUE):
+  1. `cargo build --target aarch64-linux-android` (via `cargo-ndk`) produces `libgoose_core.so` without errors; the GitHub Actions workflow passes on push and PR to `main`
+  2. A `#[cfg(target_os = "android")]` JNI wrapper module in `bridge.rs` exposes the C FFI API as JNI-callable `Java_*` functions; `tungstenite` is excluded on Android via `cfg` guard; `panic = "abort"` is set for the Android target profile
+  3. `docs/ADR-android-jni.md` exists and documents the `cdylib`+JNI approach, panic strategy, MUTF-8 handling policy, `rusqlite bundled` target limitation (aarch64 only), and what keeps the door open for a future Android app
+  4. The server pytest suite (`server/ingest/tests/`) runs on GitHub Actions with a real TimescaleDB container; failures block merge
+**Plans**: TBD
+
+### Phase 8: Additional Wearables E2E
+**Goal**: A user with any standard Bluetooth heart rate monitor (0x180D service) can connect it to the app and have HR and RR data captured in SQLite and uploaded to the server with a distinct device type
+**Depends on**: Phase 6 (needs the `WearableDescriptor`/`rustDeviceType` abstraction introduced for Gen4)
+**Requirements**: WEAR-01, WEAR-02, WEAR-03
+**Success Criteria** (what must be TRUE):
+  1. `Rust/core/src/heart_rate_gatt_protocol.rs` parses the standard 0x2A37 HR Measurement characteristic (HR value + optional RR intervals); integration tests cover the standard encoding variants
+  2. The iOS BLE client scans for and connects standard 0x180D Heart Rate Service devices; frames are routed through the existing notification pipeline via an extended `rustDeviceType` heuristic
+  3. Upload payload identifies HR monitor data with a distinct `device_type` or `device_generation` value; `GooseUploadService` handles all device classes without the silent WHOOP Gen5 fallback
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -28,41 +71,6 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 | 3. iOS Upload Client | v1.0 | 3/3 | Complete | 2026-06-03 |
 | 4. Upload Status Feedback | v1.0 | 2/2 | Complete | 2026-06-03 |
 | 5. Upstream PR Integration | v1.0 | 4/4 | Complete | 2026-06-03 |
-
-### Phase 6: WHOOP 4.0 (Gen4) Support
-
-**Goal:** Expose Gen4 support in the iOS connect flow — the user can connect, capture, and upload data from a WHOOP 4.0 with the same experience as the 5.0. The Rust core and protocol already fully support Gen4 (DeviceType::Gen4, 4-byte header, CRC8, UUID 61080001-8D6D-82B8-614A-1C8CB0F8DCC6). What is missing is the iOS app-layer: onboarding recognises WHOOP 4.0, the BLE client scans the Gen4 service UUID, and the generation is correctly classified and propagated.
-**Mode:** mvp
-**Depends on:** Phase 3
-**References:** `/Users/francisco/Documents/my-whoop/ios/OpenWhoop/BLE/` — existing Gen4 BLE patterns; `Rust/core/src/protocol.rs` — DeviceType::Gen4 already implemented
-**Requirements**: GEN4-01, GEN4-02, GEN4-03, GEN4-04, GEN4-05
-**Success Criteria** (what must be TRUE):
-  1. A user with a WHOOP 4.0 can connect the device in the app (onboarding and connect flow)
-  2. BLE scan includes the Gen4 service UUID (61080001-8D6D-82B8-614A-1C8CB0F8DCC6)
-  3. Gen4 frames are captured, parsed, and written to SQLite correctly
-  4. Upload sends `device_generation: "4.0"` in the payload (server already accepts this)
-**Plans:** TBD
-
-### Phase 7: Android Port Foundations
-
-**Goal:** Establish the architectural foundations that do not close the door to a future Android port, without performing a rewrite now. The Rust core already compiles to Android targets (aarch64-linux-android, armv7-linux-androideabi) via Cargo. Formalise the FFI bridge to support JNI, document the architecture extension points, and validate that the Rust core works on an Android emulator. Context: upstream issues #2 and #9.
-**Mode:** mvp
-**Depends on:** Phase 6
-**Requirements**: ANDROID-01, ANDROID-02, ANDROID-03
-**Success Criteria** (what must be TRUE):
-  1. `cargo build --target aarch64-linux-android` produces a static library without errors
-  2. FFI bridge documentation describes how to integrate with JNI (Kotlin/Android)
-  3. ADR documents the architectural choices that facilitate (or do not close) the Android port
-**Plans:** TBD
-
-### Phase 8: Additional Wearables Support
-
-**Goal:** Add support for a second wearable type beyond WHOOP (e.g. Amazfit Helio Strap or Fitbit Air), validating that the Rust core + BLE pipeline architecture is extensible. Rust core handles parsing and SQLite; the iOS BLE layer is modular by GATT service. Context: upstream issue #14.
-**Mode:** mvp
-**Depends on:** Phase 6
-**Requirements**: WEAR-01, WEAR-02, WEAR-03
-**Success Criteria** (what must be TRUE):
-  1. The user can connect a second device type and see captured data in the app
-  2. Rust core has a separate parsing module for the new device (without contaminating the WHOOP module)
-  3. The BLE→SQLite→upload pipeline works for the new device with the same server
-**Plans:** TBD
+| 6. WHOOP Gen4 iOS Support | v2.0 | 0/? | Not started | - |
+| 7. Android Port Foundations + CI | v2.0 | 0/? | Not started | - |
+| 8. Additional Wearables E2E | v2.0 | 0/? | Not started | - |
