@@ -84,6 +84,7 @@ None active at roadmap creation.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260603-rls | add codeql to git | 2026-06-03 | 13e3498 | [260603-rls-adicionar-codeql-no-git](.planning/quick/260603-rls-adicionar-codeql-no-git/) |
+| 260603-s5w | add HealthKitFullImporter.swift to Xcode target | 2026-06-03 | f15a898 | [260603-s5w-add-healthkitfullimporter-swift-to-goose](.planning/quick/260603-s5w-add-healthkitfullimporter-swift-to-goose/) |
 
 ## Deferred Items
 
