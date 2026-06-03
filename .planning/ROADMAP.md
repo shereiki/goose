@@ -65,6 +65,32 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 
 ## Backlog
 
+### Phase 999.3: Apply upstream PR #15 — Block state-changing debug deep links (BACKLOG)
+
+**Goal:** Integrate upstream PR #15 from b-nnett/goose (by kobemartin) which fixes a security issue with the `gooseswift://` custom URL scheme. Currently, external apps or webpages can invoke state-changing WHOOP research commands via deep link while the device is connected.
+
+**PR:** https://github.com/b-nnett/goose/pull/15
+**Author:** kobemartin
+**Status:** Open (not yet merged into b-nnett/goose)
+
+**What the PR does:**
+- Allows external debug-command deep links to invoke **read-only** research commands only
+- Blocks **state-changing** and unknown-risk command categories before any Bluetooth write
+- Hides remote URL examples in the UI for commands that cannot be safely invoked remotely
+
+**Why it matters:** The `gooseswift://` scheme is accessible from Safari or any app. Without this fix, a malicious webpage could trigger a WHOOP command (e.g., historical sync, alarm, sensor capture) while the user has Goose open and connected.
+
+**Integration approach:**
+1. Fetch the diff: `git fetch https://github.com/kobemartin/goose.git codex/block-state-change-debug-deep-links`
+2. Review the changes against our fork (we've modified `GooseAppModel.swift` and debug commands significantly)
+3. Apply with `git cherry-pick` or manual merge, resolving conflicts with our changes
+4. Verify: deep links to read-only commands still work, state-changing commands are blocked
+
+**Requirements:** TBD
+**Plans:** 0 plans — promote with `/gsd-review-backlog` when ready
+
+---
+
 ### Phase 999.2: Multi-Language Support (BACKLOG)
 
 **Goal:** Add localisation support so the app UI can be presented in multiple languages. Currently all UI strings are hardcoded in English. Add Portuguese (pt-PT) as the first localisation target, using Apple's standard String Catalog (`.xcstrings`) localisation system.
