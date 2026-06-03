@@ -22,6 +22,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 
 **v2.0 Multi-Device & Platform Foundations**
 
+- [x] **ACK-01**: Upload ACK — iOS reads `upserted` count from server response, shows "N records acked" (shipped 2026-06-03)
 - [ ] **Phase 6: WHOOP Gen4 iOS Support** - iOS app layer changes to expose full Gen4 connect/capture/upload
 - [ ] **Phase 7: Android Port Foundations + CI** - Rust core cross-compiles to Android; JNI shim; ADR; server CI
 - [ ] **Phase 8: Additional Wearables E2E** - Standard HR GATT device supported BLE to SQLite to upload

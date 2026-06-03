@@ -52,6 +52,10 @@ As a developer, I want the server pytest suite to run on CI, so that server regr
 
 - [ ] **CI-01**: Server pytest suite (`server/ingest/tests/`) runs on GitHub Actions on push/PR to `main`; uses a real TimescaleDB container (matching the existing `conftest.py` pattern); failures block merge
 
+### Upload ACK
+
+- [x] **ACK-01**: iOS upload client reads the `upserted` field from the server POST `/v1/ingest-decoded` response (`{"upserted": {"hr": N, "rr": N, ...}}`), computes the total record count, and displays it as "N records acked" in the remote server status UI — completed 2026-06-03 (commit 66ea93f)
+
 ---
 
 ## Future Requirements (v3+)
