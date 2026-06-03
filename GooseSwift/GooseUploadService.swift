@@ -6,6 +6,7 @@ private let logger = Logger(subsystem: "com.goose.swift", category: "upload")
 struct GooseUploadStatus {
   let lastUploadTimestamp: Date?
   let pendingBatchCount: Int
+  let lastSyncedCount: Int?
 }
 
 final class GooseUploadService: @unchecked Sendable {
@@ -16,6 +17,7 @@ final class GooseUploadService: @unchecked Sendable {
 
   private var lastUploadTimestamp: Date?
   private var pendingBatchCount: Int = 0
+  private var lastSyncedCount: Int?
 
   var onStatusUpdate: (@MainActor (GooseUploadStatus) -> Void)?
 
@@ -121,18 +123,21 @@ final class GooseUploadService: @unchecked Sendable {
     // Retry loop: 3 attempts with backoff 1s/2s/4s
     let delays: [TimeInterval] = [1, 2, 4]
     var uploadSucceeded = false
+    var syncedCount: Int?
     for attempt in 0..<3 {
       if attempt > 0 {
         Thread.sleep(forTimeInterval: delays[attempt - 1])
       }
-      if performRequest(request) {
+      if let count = performRequest(request) {
         uploadSucceeded = true
+        syncedCount = count
         break
       }
     }
 
     if uploadSucceeded {
       lastUploadTimestamp = Date()
+      lastSyncedCount = syncedCount
     } else {
       logger.debug("upload failed after 3 attempts — discarding batch silently")
     }
@@ -140,28 +145,35 @@ final class GooseUploadService: @unchecked Sendable {
     publishStatus()
   }
 
-  private func performRequest(_ request: URLRequest) -> Bool {
+  // Returns the total upserted record count on success, nil on failure.
+  private func performRequest(_ request: URLRequest) -> Int? {
     let semaphore = DispatchSemaphore(value: 0)
-    var success = false
-    session.dataTask(with: request) { _, response, error in
+    var result: Int?
+    session.dataTask(with: request) { data, response, error in
       if let error {
         logger.debug("upload request error: \(error)")
-      } else if let http = response as? HTTPURLResponse {
-        success = (200..<300).contains(http.statusCode)
-        if !success {
-          logger.debug("upload server error: \(http.statusCode)")
+      } else if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+        if let data,
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let upserted = json["upserted"] as? [String: Int] {
+          result = upserted.values.reduce(0, +)
+        } else {
+          result = 0
         }
+      } else if let http = response as? HTTPURLResponse {
+        logger.debug("upload server error: \(http.statusCode)")
       }
       semaphore.signal()
     }.resume()
     semaphore.wait()
-    return success
+    return result
   }
 
   private func publishStatus() {
     let status = GooseUploadStatus(
       lastUploadTimestamp: lastUploadTimestamp,
-      pendingBatchCount: pendingBatchCount
+      pendingBatchCount: pendingBatchCount,
+      lastSyncedCount: lastSyncedCount
     )
     DispatchQueue.main.async { [weak self] in
       self?.onStatusUpdate?(status)

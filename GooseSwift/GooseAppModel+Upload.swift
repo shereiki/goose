@@ -13,6 +13,7 @@ extension GooseAppModel {
       // Called on @MainActor via DispatchQueue.main.async in GooseUploadService
       self?.lastUploadAt = status.lastUploadTimestamp
       self?.pendingBatchCount = status.pendingBatchCount
+      self?.lastSyncedCount = status.lastSyncedCount
     }
   }
 

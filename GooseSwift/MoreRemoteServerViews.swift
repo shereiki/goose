@@ -84,12 +84,19 @@ struct MoreRemoteServerView: View {
             }
           }
 
-          // Row 2: Last sync + manual trigger
+          // Row 2: Last sync + ACK count + manual trigger
           LabeledContent("Last sync") {
             HStack(spacing: 8) {
               if let lastUpload = model.lastUploadAt {
-                Text(RelativeDateTimeFormatter().localizedString(for: lastUpload, relativeTo: Date()))
-                  .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 1) {
+                  Text(RelativeDateTimeFormatter().localizedString(for: lastUpload, relativeTo: Date()))
+                    .foregroundStyle(.secondary)
+                  if let count = model.lastSyncedCount {
+                    Text("\(count) records acked")
+                      .font(.caption2)
+                      .foregroundStyle(.green)
+                  }
+                }
               } else {
                 Text("Never").foregroundStyle(.secondary)
               }
