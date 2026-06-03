@@ -1,0 +1,69 @@
+name: CodeQL
+
+# Static analysis for security vulnerabilities in application source code.
+#
+# Coverage:
+#   * swift  - GooseSwift/ — data flow analysis, injection patterns, insecure iOS
+#               API usage (CoreBluetooth, Keychain, URLSession).
+#   * python - server/    — SQL injection, path traversal, insecure deserialization,
+#               weak cryptography patterns (FastAPI + TimescaleDB stack).
+#
+# Rust is excluded: CodeQL support is experimental and cargo-audit already covers
+# known advisories via the RustSec database (see security.yml).
+#
+# Runs on every push/PR to main (no path filter — code changes always warrant a
+# scan), on a weekly schedule (Monday 08:00 UTC, staggered 1 h after security.yml),
+# and on demand via workflow_dispatch.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "0 8 * * 1" # Mondays at 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # required to upload SARIF results to GitHub Security tab
+  actions: read           # required by github/codeql-action in private repositories
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ${{ matrix.language == 'swift' && 'macos-15' || 'ubuntu-latest' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [swift, python]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended
+
+      # Swift: CodeQL requires a real compilation pass to trace data flow accurately.
+      # CODE_SIGNING_ALLOWED=NO avoids certificate requirements on CI runners.
+      - name: Build Swift target (Swift only)
+        if: matrix.language == 'swift'
+        run: |
+          xcodebuild \
+            -project GooseSwift.xcodeproj \
+            -scheme GooseSwift \
+            -destination 'generic/platform=iOS Simulator' \
+            build \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Python: CodeQL analyses Python without a build step.
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
