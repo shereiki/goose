@@ -17,11 +17,15 @@ extension GooseAppModel {
       }
       let result = self.notificationIngestResult(for: event)
       guard !result.frames.isEmpty else {
-        self.handleEmptyNotificationIngestResult(result)
+        DispatchQueue.main.async { [weak self] in
+          self?.handleEmptyNotificationIngestResult(result)
+        }
         return
       }
       guard captureImportActive else {
-        self.handleNotificationIngestResultWithoutCapture(result, parseContext: parseContext)
+        DispatchQueue.main.async { [weak self] in
+          self?.handleNotificationIngestResultWithoutCapture(result, parseContext: parseContext)
+        }
         return
       }
       DispatchQueue.main.async { [weak self] in
@@ -187,6 +191,7 @@ extension GooseAppModel {
         + " | rowQ \(rowBuildQueue.depth) hwm \(rowBuildQueue.highWatermark)"
     )
 
+    let aggregator = captureFrameEnqueueAggregator
     captureFrameRowBuildQueue.async { [weak self] in
       guard let self else {
         return
@@ -196,7 +201,7 @@ extension GooseAppModel {
         self?.handleCaptureFrameWriteResult(result)
       }
       let rowBuildQueue = self.decrementCaptureFrameRowBuildQueueDepth()
-      self.captureFrameEnqueueAggregator.record(
+      aggregator.record(
         enqueueResult,
         capturedAt: event.capturedAt,
         rowQueueDepth: rowBuildQueue.depth,
@@ -436,7 +441,9 @@ extension GooseAppModel {
         batchTiming: batchTiming
       )
       guard !mainResults.isEmpty else {
-        self.handleParsedNotificationFramesWithoutMain(dispatch)
+        DispatchQueue.main.async { [weak self] in
+          self?.handleParsedNotificationFramesWithoutMain(dispatch)
+        }
         return
       }
       DispatchQueue.main.async { [weak self] in
@@ -515,7 +522,7 @@ extension GooseAppModel {
     )
   }
 
-  static func interpretNotificationFrame(
+  nonisolated static func interpretNotificationFrame(
     _ result: NotificationFrameParseResult,
     event: GooseNotificationEvent,
     healthCaptureActive: Bool,
@@ -558,7 +565,7 @@ extension GooseAppModel {
     )
   }
 
-  static func requiresMainParsedFrameHandling(
+  nonisolated static func requiresMainParsedFrameHandling(
     _ interpretation: NotificationFrameInterpretation,
     overnightGuardActive: Bool
   ) -> Bool {
@@ -575,7 +582,7 @@ extension GooseAppModel {
     return false
   }
 
-  static func canHandleDataSignalOffMain(
+  nonisolated static func canHandleDataSignalOffMain(
     _ interpretation: NotificationFrameInterpretation,
     overnightGuardActive: Bool,
     respiratoryPacketWatchActive: Bool
@@ -592,7 +599,7 @@ extension GooseAppModel {
       && interpretation.whoopEvent == nil
   }
 
-  static func recordSkippedParsedFrameMainHandling(
+  nonisolated static func recordSkippedParsedFrameMainHandling(
     _ result: ParsedNotificationFrameResult,
     ble: GooseBLEClient,
     packetUIStateAggregator: PacketUIStateAggregator
@@ -668,7 +675,7 @@ extension GooseAppModel {
     let deviceModel: String
   }
 
-  static func captureFrameRows(for request: CaptureFrameRowBuildRequest) -> [CapturedFrameWriteRow] {
+  nonisolated static func captureFrameRows(for request: CaptureFrameRowBuildRequest) -> [CapturedFrameWriteRow] {
     request.frames.enumerated().map { index, frame in
       let evidenceID = Self.captureEvidenceID(for: frame, event: request.event, index: index)
       return CapturedFrameWriteRow(
@@ -694,7 +701,7 @@ extension GooseAppModel {
     let usedBufferedData: Bool
   }
 
-  func notificationIngestResult(for event: GooseNotificationEvent) -> NotificationIngestResult {
+  nonisolated func notificationIngestResult(for event: GooseNotificationEvent) -> NotificationIngestResult {
     let reassembly = gooseFrames(in: event.value, event: event)
     return NotificationIngestResult(
       event: event,
@@ -756,7 +763,7 @@ extension GooseAppModel {
     return snapshot
   }
 
-  func decrementCaptureFrameRowBuildQueueDepth() -> (depth: Int, highWatermark: Int) {
+  nonisolated func decrementCaptureFrameRowBuildQueueDepth() -> (depth: Int, highWatermark: Int) {
     captureFrameRowBuildStateLock.lock()
     captureFrameRowBuildQueueDepth = max(0, captureFrameRowBuildQueueDepth - 1)
     let snapshot = (captureFrameRowBuildQueueDepth, captureFrameRowBuildQueueHighWatermark)
