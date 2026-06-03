@@ -3,15 +3,17 @@ name: CodeQL
 # Static analysis for security vulnerabilities in application source code.
 #
 # Coverage:
+#   * swift  - GooseSwift/ — data flow analysis, injection patterns, insecure iOS
+#               API usage (CoreBluetooth, Keychain, URLSession).
 #   * python - server/    — SQL injection, path traversal, insecure deserialization,
 #               weak cryptography patterns (FastAPI + TimescaleDB stack).
 #
-# Swift is temporarily excluded: the project targets iOS 26.0 (Xcode 26 beta),
-# which is not available on standard GitHub Actions runners (macos-15 supports
-# up to iOS 18.5.99). Re-enable when Xcode 26 runners become generally available.
-#
 # Rust is excluded: CodeQL support is experimental and cargo-audit already covers
 # known advisories via the RustSec database (see security.yml).
+#
+# Swift job runs on macos-26 (Xcode 26.4.1 default, iOS 26.x SDKs available)
+# to match the project's IPHONEOS_DEPLOYMENT_TARGET = 26.0.
+# Python job runs on ubuntu-latest (no build step needed).
 #
 # Runs on every push/PR to main (no path filter — code changes always warrant a
 # scan), on a weekly schedule (Monday 08:00 UTC, staggered 1 h after security.yml),
@@ -34,12 +36,12 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ matrix.language == 'swift' && 'macos-15' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.language == 'swift' && 'macos-26' || 'ubuntu-latest' }}
 
     strategy:
       fail-fast: false
       matrix:
-        language: [python]
+        language: [swift, python]
 
     steps:
       - name: Check out repository
@@ -50,6 +52,21 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
+
+      # Swift: CodeQL requires a real compilation pass to trace data flow accurately.
+      # CODE_SIGNING_ALLOWED=NO avoids certificate requirements on CI runners.
+      # GOOSE_SKIP_RUST_CORE_BUILD=1 uses the committed pre-built libgoose_core.a
+      # instead of recompiling Rust (which would require iOS Rust targets on the runner).
+      - name: Build Swift target (Swift only)
+        if: matrix.language == 'swift'
+        run: |
+          xcodebuild \
+            -project GooseSwift.xcodeproj \
+            -scheme GooseSwift \
+            -destination 'generic/platform=iOS Simulator' \
+            build \
+            CODE_SIGNING_ALLOWED=NO \
+            GOOSE_SKIP_RUST_CORE_BUILD=1
 
       # Python: CodeQL analyses Python without a build step.
 
