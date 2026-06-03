@@ -83,15 +83,39 @@ final class GooseUploadService: @unchecked Sendable {
       return
     }
 
-    let deviceGeneration = deviceType == "GEN4" ? "4.0" : "5.0"
-    let payload: [String: Any] = [
-      "device": ["id": deviceID.uuidString, "mac": NSNull(), "name": NSNull()],
-      "streams": [
-        "hr": hr, "rr": rr, "events": events, "battery": battery,
-        "spo2": spo2, "skin_temp": skinTemp, "resp": resp, "gravity": gravity,
-      ],
-      "device_generation": deviceGeneration,
+    // Build the payload per device class. WHOOP Gen4/Gen5 use device_generation with no
+    // device_class key. HR monitors (default case) use device_type (the pre-sanitized BLE
+    // advertised name) plus device_class: "HR_MONITOR" so the server can distinguish the
+    // wearable class from the model/name (review HIGH-1).
+    let streams: [String: Any] = [
+      "hr": hr, "rr": rr, "events": events, "battery": battery,
+      "spo2": spo2, "skin_temp": skinTemp, "resp": resp, "gravity": gravity,
     ]
+    let device: [String: Any] = ["id": deviceID.uuidString, "mac": NSNull(), "name": NSNull()]
+    let payload: [String: Any]
+    switch deviceType {
+    case "GEN4":
+      payload = [
+        "device": device,
+        "streams": streams,
+        "device_generation": "4.0",
+      ]
+    case "GOOSE":
+      payload = [
+        "device": device,
+        "streams": streams,
+        "device_generation": "5.0",
+      ]
+    default:
+      // device_type carries the model/name (pre-sanitized BLE advertised name),
+      // device_class carries the wearable class so the server can distinguish class from model.
+      payload = [
+        "device": device,
+        "streams": streams,
+        "device_type": deviceType,
+        "device_class": "HR_MONITOR",
+      ]
+    }
 
     guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
       pendingBatchCount = max(0, pendingBatchCount - 1)

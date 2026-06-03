@@ -7546,6 +7546,7 @@ fn device_type_name(device_type: DeviceType) -> &'static str {
         DeviceType::Maverick => "MAVERICK",
         DeviceType::Puffin => "PUFFIN",
         DeviceType::Goose => "GOOSE",
+        DeviceType::HrMonitor => "HR_MONITOR",
     }
 }
 

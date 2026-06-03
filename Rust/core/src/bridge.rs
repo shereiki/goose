@@ -7959,6 +7959,7 @@ fn parse_device_type(value: &str) -> GooseResult<DeviceType> {
         "MAVERICK" | "Maverick" | "maverick" => Ok(DeviceType::Maverick),
         "PUFFIN" | "Puffin" | "puffin" => Ok(DeviceType::Puffin),
         "GOOSE" | "Goose" | "goose" => Ok(DeviceType::Goose),
+        "HR_MONITOR" | "hr_monitor" => Ok(DeviceType::HrMonitor),
         other => Err(GooseError::message(format!(
             "unsupported device_type: {other}"
         ))),
@@ -8649,6 +8650,25 @@ mod tests {
             source: "healthkit".to_string(),
             excluded_from_baseline: false,
         }
+    }
+
+    // Phase 08-P03 — parse_device_type HrMonitor assertions (HIGH-2)
+    #[test]
+    fn parse_device_type_hr_monitor_uppercase() {
+        let result = parse_device_type("HR_MONITOR").expect("HR_MONITOR must parse");
+        assert_eq!(result, DeviceType::HrMonitor, "HR_MONITOR must map to DeviceType::HrMonitor");
+    }
+
+    #[test]
+    fn parse_device_type_hr_monitor_lowercase() {
+        let result = parse_device_type("hr_monitor").expect("hr_monitor must parse");
+        assert_eq!(result, DeviceType::HrMonitor, "hr_monitor must map to DeviceType::HrMonitor");
+    }
+
+    #[test]
+    fn parse_device_type_goose_no_regression() {
+        let result = parse_device_type("GOOSE").expect("GOOSE must parse");
+        assert_eq!(result, DeviceType::Goose, "GOOSE must still map to DeviceType::Goose");
     }
 }
 
