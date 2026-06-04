@@ -90,6 +90,7 @@ extension GooseBLEClient: CBCentralManagerDelegate {
       // here so the bt_restored path sees activePeripheral == nil when BT comes back on.
       activePeripheral = nil
       commandCharacteristic = nil
+      debugMenuCharacteristic = nil
       clientHelloSentForCurrentConnection = false
       updateConnectionState("disconnected")
       updateReconnectState("waiting for bluetooth")
@@ -277,6 +278,7 @@ extension GooseBLEClient: CBCentralManagerDelegate {
     )
     activePeripheral = nil
     commandCharacteristic = nil
+    debugMenuCharacteristic = nil
     activeDescriptor = nil
     batteryLevelCharacteristic = nil
     batteryLevelStatusCharacteristic = nil
