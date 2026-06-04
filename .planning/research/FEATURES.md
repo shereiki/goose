@@ -1,41 +1,22 @@
 # Feature Research
 
-**Domain:** iOS biometric app — Multi-device & Platform Foundations (v2.0)
-**Researched:** 2026-06-03
-**Confidence:** HIGH (primary source: direct codebase read; secondary: Context7/Apple/NDK docs)
+**Domain:** iOS BLE wearable app — WHOOP + HR monitor capture, RTC sync, localisation
+**Researched:** 2026-06-04
+**Confidence:** HIGH (all claims verified against codebase + CoreBluetooth official docs + Xcode localisation docs)
 
 ---
 
-## Context: What Is Already Built vs. What Is New
+## Context: What Already Exists (Do Not Re-Build)
 
-Before cataloguing features, it is critical to understand what v1.0 already shipped and what
-the Rust core already supports, because several "v2.0 features" are partially or fully wired.
-
-### Already wired at the Rust level (DeviceType::Gen4 fully implemented)
-- `protocol.rs`: `DeviceType::Gen4` enum, 4-byte header parsing, CRC8 validation
-- `GooseBLETypes.swift`: `rustDeviceType` auto-derived from characteristic UUID prefix
-  (`"610800"` prefix → `"GEN4"`, else `"GOOSE"`)
-- `GooseUploadService.swift`: `device_generation` maps `GEN4 → "4.0"`, else `"5.0"` (line 88)
-- `GooseBLEClient.swift`: `whoopServices` array already contains both service UUIDs —
-  `fd4b0001` (Gen5/Goose) and `61080001` (Gen4) — so `scanForPeripherals(withServices:)` already
-  discovers both generations
-
-### What is genuinely missing for Gen4 iOS layer
-- Onboarding UI text says "WHOOP" generically but does not acknowledge WHOOP 4.0 as a supported
-  device (no mention of Gen4 in `OnboardingStepViews.swift`)
-- No `GooseDiscoveredDevice.generation` field — the discovered device struct carries only
-  `id`, `name`, `rssi`; the UI cannot show "WHOOP 4.0" vs "WHOOP 5.0" to the user
-- No generation-based UI distinction in `DeviceView.swift` or `ConnectionView.swift`
-- Upload payload already sends correct `device_generation` but the triggering path
-  (`GooseAppModel+Upload.swift` line 25) passes `deviceEvent.rustDeviceType` — this works
-  correctly because `rustDeviceType` is already derived from the characteristic UUID
-
-### Already wired at the Rust/FFI level for Android foundations
-- `Cargo.toml` declares `crate-type = ["rlib", "staticlib", "cdylib"]` — `cdylib` is the
-  correct type for a JNI `.so` shared library; no Cargo.toml change required
-- Bridge API is two C symbols: `goose_bridge_handle_json` + `goose_bridge_free_string`; this
-  maps trivially to two `native` methods in Kotlin/Java
-- No JNI-specific code exists yet (no `jni` crate, no `extern "C" Java_*` functions)
+| Already Built | Where |
+|---------------|-------|
+| WHOOP BLE scan, connect, packet capture | `GooseBLEClient` + extensions |
+| HR monitor CBCentralManager + 0x180D/0x2A37 subscribe | `GooseBLEHRMonitorManager` in `GooseBLEClient+HRMonitor.swift` |
+| HR monitor upload taxonomy (device_class HR_MONITOR) | `GooseAppModel+Upload.swift` |
+| WHOOP clock read + write commands | `writeClockCommand(.get/.set)` in `GooseBLEClient+Commands.swift` |
+| Recovery V2 view scaffold | `RecoveryV2OverviewPage` in `HealthRecoveryStressViews.swift` |
+| SQLite frame storage with device_id column | `store.rs`, `capture_import.rs` |
+| FastAPI+TimescaleDB server upload | `GooseUploadService`, server/ |
 
 ---
 
@@ -43,164 +24,112 @@ the Rust core already supports, because several "v2.0 features" are partially or
 
 ### Table Stakes (Users Expect These)
 
-Features that, if missing, make the feature feel broken or incomplete.
+Features users assume exist. Missing these = product feels incomplete.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| GEN4-01: BLE scan discovers Gen4 without user action | Both UUIDs in `whoopServices` already — scan already works. The gap is user-visible: onboarding says "find your WHOOP" without acknowledging WHOOP 4.0 is supported | LOW | `scanForPeripherals(withServices: whoopServices)` already passes both UUIDs; no scan code change needed |
-| GEN4-02: `GooseDiscoveredDevice` carries generation | Device list UI currently shows name + RSSI only. User with two WHOOPs (4.0 and 5.0) cannot tell which is which | LOW | Add `generation: String` field derived from advertised service UUID at discovery time; `fd4b0001` → `"5.0"`, `61080001` → `"4.0"` |
-| GEN4-03: Onboarding copy acknowledges WHOOP 4.0 | User with WHOOP 4.0 sees "Find your WHOOP" — unclear if supported | LOW | Update strings in `OnboardingStepViews.swift`; no logic change |
-| GEN4-04: Device view shows generation label | After connection, `DeviceView` shows model number from `GooseBLEClient.modelNumber`. Should also show generation label for clarity | LOW | Read from `GooseDiscoveredDevice.generation` or infer from connected service UUID |
-| GEN4-05: Upload payload generation field is tested E2E | `device_generation` is already sent correctly but never verified with a real Gen4 device | LOW | Unit test: verify `GooseUploadService` sends `"4.0"` when `deviceType == "GEN4"` (already wired; test is the deliverable) |
-| ANDROID-01: Rust core cross-compiles for `aarch64-linux-android` | No Android app without this. Must be verified, not assumed. `cdylib` crate type is declared but never built for Android targets | MEDIUM | `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`; `cargo build --target aarch64-linux-android --release`; NDK toolchain required; `bundled` SQLite in rusqlite may need special linker flags |
-| ANDROID-02: Thin JNI wrapper (`goose_jni.rs`) for the two bridge functions | JNI naming convention requires `Java_com_example_GooseBridge_handleJson` etc. — the existing `goose_bridge_handle_json` C symbol is not callable directly from Java/Kotlin without JNI registration | MEDIUM | New `src/jni_bridge.rs` file; uses `jni` crate or raw `extern "C" JNIEXPORT`; wraps `goose_bridge_handle_json` and `goose_bridge_free_string`; ~50 lines |
-| ANDROID-03: ADR documenting Android architecture decisions | The upstream issue #9 is open; without an ADR future contributors do not know how the Android layer is expected to work | LOW | Markdown ADR in `docs/adr/` covering: why cdylib, why JSON-over-JNI (not gRPC/protobuf), memory safety (who frees the returned string), threading model |
-| WEAR-01: Second wearable has a dedicated Rust parsing module | If the new device reuses WHOOP's `protocol.rs`, the architecture is not extensible — it just hard-codes a second branch. A separate module validates extensibility | HIGH | New `src/[device]_protocol.rs`; must implement a common trait or follow same parse_frame pattern; SQLite schema may need `device_type` extension |
-| WEAR-02: BLE scan includes second wearable service UUID | Cannot discover the device without its service UUID in `whoopServices` (or a parallel scan) | MEDIUM | Add UUID to `whoopServices` array in `GooseBLEClient.swift`; update `isWhoopService` logic to be generic `isKnownWearableService`; update `rustDeviceType` derivation in `GooseBLETypes.swift` |
-| WEAR-03: Upload payload correctly identifies second wearable | Server receives `device_generation` or equivalent field identifying the new device type | LOW | Extension of existing `device_generation` logic in `GooseUploadService.swift`; may require server-side schema update |
+| HR monitor scan list UI | Backend scabut has zero callers in any view; users cannot discover HR monitors | MEDIUM | `GooseBLEHRMonitorManager.discoveredHRDevices` is not a `@Published` property on `GooseBLEClient`; needs promotion to published state and a SwiftUI list, mirroring the existing WHOOP `ConnectionView` "Discovered" section |
+| HR monitor connect / disconnect from UI | Scan list is useless without a tap-to-connect action | LOW | `connectHRMonitor(_:)` already exists; UI just needs to call it; also needs a disconnect button |
+| HR monitor connection status visible | Users need to know if the chest strap is connected | LOW | `hrConnectionState` string on `GooseBLEHRMonitorManager` needs to surface as `@Published` on the parent `GooseBLEClient` |
+| HR monitor independent capture session | Currently gated on WHOOP `activeHealthPacketCapture`; users want HR-only recordings without WHOOP | HIGH | Requires a separate session lifecycle that starts/stops independently; frames already route through `onNotification` but the capture queue gating logic must be decoupled |
+| BLE reconnect backoff with UI feedback | Reconnecting immediately in a tight loop drains both phone and strap battery; upstream PR #18 documents this | MEDIUM | Current `attemptAutomaticReconnect` has no delay at all; needs per-attempt delay array [1,2,4,8,16,32,60s] and a 10-attempt circuit breaker; UI needs attempt count + countdown display |
+| Bluetooth state error handling in HR scan UI | Users need to know why scan is not starting (BT off, unauthorized) | LOW | Mirror what `ConnectionView` already does for WHOOP: show BT state, disable Scan button when `central.state != .poweredOn` |
+| Recovery V2 dashboard wired to real data | Scaffold (`RecoveryV2OverviewPage`) exists with placeholder display methods; needs bridge-backed HRV/RHR/recovery score | HIGH | `HealthDataStore` must expose recovery-specific bridge queries; `store.recoveryHRVDisplayText(for:)` is already called in the view but the method may not be fully implemented |
+| per-row device_id filter in CR-02 | Without this, multi-device setups mix frames from different devices in metric queries | MEDIUM | `active_device_id: None` is hard-coded in `capture_import.rs` line 400; Rust bridge needs the UUID passed per-row and queries updated to filter |
+| pt-PT localisation baseline | All UI strings are hard-coded English; app targets Portuguese-speaking user | MEDIUM | No `.xcstrings` or `.strings` files exist; Xcode 15 String Catalog workflow is the correct approach; ~200 visible strings estimated across 80+ SwiftUI files |
 
 ### Differentiators (Competitive Advantage)
 
-Features that add value beyond the minimum viable scope.
+Features that set the product apart. Not required, but valued.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| GEN4-D1: Connection log shows device generation clearly | "Connected to WHOOP 4.0 (Gen4)" in the log view gives the user explicit confirmation their device is recognised correctly | LOW | Add generation to `record(source: "ble", title: "device.discovered")` body string |
-| ANDROID-D1: `cargo-ndk` build script committed to repo | `Scripts/build_android_rust.sh` alongside `build_ios_rust.sh` — contributors can cross-compile for Android without researching NDK setup | LOW | Shell script mirroring `build_ios_rust.sh`; documents NDK path requirement |
-| ANDROID-D2: Kotlin usage example in docs | A concrete Kotlin snippet showing how to call `GooseBridge.handleJson()` lowers the barrier to a future Android app | LOW | Part of ADR or separate `docs/android-integration.md` |
-| WEAR-D1: Protocol documentation for the second wearable in `docs/` | Explains what the Rust parsing module does, which BLE characteristics are read, and how frames are structured — enables future contributors to add a third wearable | MEDIUM | Markdown; cites BLE spec or community reverse-engineering source |
+| WHOOP 4.0 RTC clock auto-sync | Prevents timestamp drift that corrupts sleep/recovery correlation; upstream issue #17 is unresolved | MEDIUM | `writeClockCommand(.set, syncIfNeeded:)` path already exists; missing pieces are: (a) drift detection at connection time, (b) auto-trigger when drift > threshold (constant already referenced as `strapClockAutoSyncThresholdDisplay`), (c) clear drift delta in DeviceView |
+| BLE reconnect backoff with "Retry Now" / "Stop Retrying" controls | Power users can intervene; avoids app appearing frozen during out-of-range periods | LOW | Described in upstream PR #18; `ReconnectBackoffBanner` with live countdown is the UX; can be added to `DeviceView` alongside existing `reconnectRemembered()` button |
+| HR monitor session independent of WHOOP | Single-device HR-only workflows: treadmill, rowing, any sport without WHOOP | HIGH | High value for the user; architecturally requires decoupling HR capture start/stop from `activeHealthPacketCapture` in `GooseAppModel` |
+| RSSI signal strength indicator in scan list | Users identify the nearest HR monitor when multiple are in range | LOW | `discoveredHRDevices` already sorts by RSSI; just needs a visual bar or dBm label in the list row |
+| Scan auto-stop on connect | Saves battery; standard BLE UX best practice per Apple docs | LOW | CoreBluetooth docs: call `stopScan()` in `centralManager(_:didConnect:)`; `GooseBLEHRMonitorManager.centralManager(_:didConnect:)` does NOT currently stop scan |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
-Features to explicitly not build in this milestone.
+Features that seem good but create problems.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| Full Android app (Activities, UI) | Natural next step after Android foundations | Would take 3-4x the effort of the foundations alone; the milestone is explicitly "foundations only" — building UI now means no time for the wearable extensibility work | ADR + JNI bridge only; Android app is v3+ |
-| Generic "multi-wearable abstraction layer" | Seems clean to define a `Wearable` Swift protocol for any future device | Premature abstraction before the second wearable is understood means redesigning when the third one arrives and doesn't fit | Add exactly one new device; extract abstraction only when a third device confirms the pattern |
-| Vendor SDK / CocoaPod for the second wearable | Some wearables offer official iOS SDKs | Introducing an external Swift dependency contradicts the project constraint "no external iOS dependencies"; vendor SDKs often require NDAs or paid licences | Use only standard CoreBluetooth + an open GATT spec device (see below) |
-| Automatic device-generation negotiation over BLE | Apps sometimes read firmware revision to confirm device type | Already solved at the UUID level: the Gen4 service UUID (`61080001-*`) is different from Gen5 (`fd4b0001-*`); reading firmware adds latency and complexity | UUID-derived `rustDeviceType` (already working) |
-| TimescaleDB schema migration for new device columns | Adding device-type-specific columns to TimescaleDB now | Server schema change requires coordinated migration and breaks existing installs; new device type can use existing `device_generation` field if structured correctly | Reuse `device_generation` string field; no schema change required |
-| Polar H10 as second wearable (vendor-dependent) | Polar H10 uses standard Heart Rate GATT (0x180D) but raw ECG is on a proprietary characteristic with no public spec | The ECG characteristic format is undocumented without Polar SDK agreement | Use a device with fully public GATT spec (see below) |
+| Auto-scan on app foreground for HR monitor | Convenience | Drains battery; may connect to wrong device if multiple HR monitors in range; CBCentralManager state may not be `.poweredOn` yet at foreground time | Explicit scan button; remember the last-connected HR monitor UUID and use `retrievePeripherals(withIdentifiers:)` for silent reconnect |
+| Real-time everything localised (all dynamic strings) | Completeness | Dynamic strings formed at runtime (e.g. `"BPM: \(bpm)"`, `"disconnected"`) are not auto-extracted by Xcode and break the String Catalog extraction pipeline; they also serve as diagnostic log values | Localise static UI labels only in v3.0; dynamic metric values are locale-formatted by Swift `formatted()` without localisation keys |
+| Full offline-first localisation of Coach/AI responses | Thoroughness | Coach responses are generated by OpenAI API; localising surrounding chrome is sufficient; prompt engineering can request Portuguese responses | Localise app chrome; let Coach respond in user's language via prompt |
+| Circuit breaker that silently gives up with no UI | Clean implementation | Users do not know why WHOOP stopped reconnecting; app appears broken | Always show a banner or status when circuit breaker trips; provide a manual "Retry" button |
+| Standard BLE Current Time Service (0x1805) for RTC sync | Standards compliance | WHOOP uses a proprietary command protocol, not standard GATT CTS; writing to 0x1805 would have no effect | Use existing `writeClockCommand(.set)` which wraps the proprietary WHOOP frame format |
 
 ---
 
 ## Feature Dependencies
 
 ```
-GEN4-01 (scan discovers Gen4)
-    — already done at scan level; dependency is onboarding copy (GEN4-03)
+[HR scan list UI]
+    └──requires──> [discoveredHRDevices promoted to @Published on GooseBLEClient]
+                       └──requires──> [GooseBLEHRMonitorManager owner.objectWillChange refactor or @Published bridge]
 
-GEN4-02 (GooseDiscoveredDevice.generation field)
-    └──enables──> GEN4-04 (device view generation label)
-    └──enables──> GEN4-D1 (connection log generation label)
+[HR independent capture session]
+    └──requires──> [HR scan list UI + connect]
+    └──requires──> [session lifecycle decoupled from WHOOP activeHealthPacketCapture in GooseAppModel]
+    └──benefits from──> [CR-02 device_id per-row filter] (HR frames otherwise tagged NULL device_id)
 
-ANDROID-01 (cross-compile for Android)
-    └──required by──> ANDROID-02 (JNI wrapper, must be buildable to be useful)
-    └──required by──> ANDROID-D1 (build script)
+[BLE reconnect backoff]
+    └──requires──> [attemptAutomaticReconnect refactor with delay work items + attempt counter]
+    └──enhances──> [ReconnectBackoffBanner UI in DeviceView]
+    └──applies to──> [GooseBLEHRMonitorManager.centralManager(_:didDisconnect:) — same pattern]
 
-ANDROID-02 (JNI wrapper)
-    └──enables──> ANDROID-D2 (Kotlin usage example)
-    └──informs──> ANDROID-03 (ADR, documents what was actually built)
+[WHOOP RTC auto-sync]
+    └──requires──> [existing writeClockCommand(.set) path — already present]
+    └──requires──> [drift detection at connect time — reads .get then conditionally sends .set]
+    └──enhances──> [DeviceView clock section — strapClockStatus already displayed]
 
-WEAR-01 (Rust parsing module for second wearable)
-    └──required by──> WEAR-03 (upload identifies device correctly)
-    └──informs──> WEAR-D1 (protocol docs)
+[Recovery V2 dashboard]
+    └──requires──> [HealthDataStore recovery bridge query methods implemented]
+    └──requires──> [Rust bridge methods for recovery HRV/RHR/score returning real rows]
 
-WEAR-02 (BLE scan includes second wearable UUID)
-    └──required by──> WEAR-01 (need to receive BLE frames to test the parser)
-    └──required by──> WEAR-03 (upload triggered by BLE events from new device)
+[pt-PT localisation]
+    └──requires──> [Localizable.xcstrings file created + project language added]
+    └──no conflicts with other features — fully independent]
+
+[CR-02 device_id filter]
+    └──requires──> [Rust capture_import.rs updated to accept and persist device_id per-row]
+    └──requires──> [Swift call site passes peripheral UUID into bridge args]
+    └──requires──> [Rust query methods updated with WHERE device_id filter]
 ```
 
 ### Dependency Notes
 
-- **GEN4-01 does not block anything**: scan already discovers Gen4 devices. The remaining GEN4 items
-  are UI and documentation work that can proceed in parallel.
-- **ANDROID-01 must precede ANDROID-02**: a JNI wrapper that does not build for Android targets is
-  untestable and provides false confidence.
-- **WEAR-02 must precede WEAR-01**: the Rust parser must be exercised with real BLE frames;
-  without the scan including the device UUID, no frames arrive. WEAR-02 is the earliest deliverable.
-- **WEAR-01 is the highest-effort item**: it requires choosing a second wearable, understanding its
-  GATT protocol, implementing a Rust module, and writing tests. It gates the entire WEAR track.
+- **HR independent capture benefits from CR-02:** Without per-row device_id, HR frames captured independently cannot be isolated from WHOOP frames in metric queries — metrics would be computed on mixed data from both devices.
+- **Recovery V2 requires bridge implementation:** The view scaffold calls `store.recoveryHRVDisplayText(for:)` etc.; if these methods return placeholder strings the feature is visually present but functionally hollow.
+- **Reconnect backoff applies to both BLE delegates:** PR #18 targets the WHOOP path in `GooseBLEClient`; the same pattern is needed for `GooseBLEHRMonitorManager` to prevent battery drain from HR monitor reconnect loops.
+- **Localisation is fully independent:** No data or BLE dependency; can be developed in a parallel or separate phase.
 
 ---
 
-## Second Wearable: Open GATT Spec Options
+## MVP Definition for v3.0
 
-The project constraint prohibits vendor SDKs. Three device categories have fully public GATT specs:
+### Launch With (required for milestone closure)
 
-### Option A: Polar H10 (Heart Rate + RR intervals only)
-- Standard Heart Rate Service (0x180D), Heart Rate Measurement (0x2A37) — Bluetooth SIG public spec
-- RR intervals included in the same characteristic payload
-- ECG raw data: proprietary PMD characteristic — **no public spec without Polar SDK**
-- Assessment: suitable for HR+RR only (same data as standard HR monitor); ECG not accessible
-- Complexity: LOW (standard GATT 0x180D already parsed in `GooseBLEClient.swift` line 392)
-- Already present: `standardHeartRateServiceID = CBUUID(string: "180D")` exists in the codebase
+- [ ] HR scan list UI with connect action — completes WEAR-02 started in v2.0
+- [ ] HR independent capture session — core value for HR-only workflows
+- [ ] CR-02 per-row device_id filter — data integrity prerequisite for multi-device
+- [ ] Recovery V2 dashboard with real bridge data — view scaffold exists; needs wiring
+- [ ] BLE reconnect backoff + circuit breaker — battery and reliability fix; upstream PR #18 ready
+- [ ] WHOOP 4.0 RTC auto-sync — upstream issue #17; clock drift corrupts all time-series data
+- [ ] pt-PT localisation baseline — required by user; app chrome strings only
 
-### Option B: Garmin HRM-Pro (Heart Rate + RR via standard GATT)
-- Standard Heart Rate Service (0x180D) — same as Polar H10
-- No proprietary characteristics accessible without Garmin SDK
-- Assessment: identical scope to Polar H10 for this project's purposes
-- Complexity: LOW
+### Add After Validation (v3.x)
 
-### Option C: Texas Instruments SensorTag (CC2650 / CC1350)
-- Fully open GATT spec, publicly documented by TI
-- Temperature, humidity, pressure, optical, movement (accelerometer/gyroscope/magnetometer)
-- Not a health wearable — validates architecture extensibility but data is not biometric
-- Complexity: MEDIUM (new Rust module for non-WHOOP sensor data; different data model)
+- [ ] HR monitor silent reconnect via `retrievePeripherals(withIdentifiers:)` — improves UX after first pairing
+- [ ] Localisation of dynamic metric display values using Swift `formatted()`
 
-### Option D: Any Bluetooth SIG-standardised heart rate monitor
-- Devices advertising 0x180D Heart Rate Service with 0x2A37 characteristic have a fully public spec
-- The standard Heart Rate Measurement characteristic format is documented in the Bluetooth GATT spec
-- Multiple affordable devices: Wahoo TICKR, CooSpo HW807, Garmin HRM-Dual, generic chest straps
-- Assessment: **best fit** — biometric data (HR + RR), no vendor NDA, standard parse logic, low cost
-- Complexity: LOW for parsing (standard GATT); MEDIUM for end-to-end (new Rust module + BLE + upload)
+### Future Consideration (v4+)
 
-### Recommendation
-Use Option D: a generic Bluetooth SIG heart rate monitor (e.g., Wahoo TICKR or CooSpo HW807).
-Rationale:
-1. Standard 0x180D service UUID is already in `GooseBLEClient.swift` (line 392) — scan already
-   discovers it; no new UUID needed
-2. The Heart Rate Measurement (0x2A37) format is documented in the Bluetooth GATT spec, no NDA
-3. The data (HR + optional RR intervals) maps directly to existing `hr` and `rr` stream fields
-   in the server's `POST /v1/ingest-decoded` API — no server schema change required
-4. It validates the architecture: a completely separate `src/heart_rate_gatt_protocol.rs` module
-   with its own parse function, separate from `protocol.rs` (WHOOP-specific), confirms extensibility
-5. Devices are inexpensive and widely available for testing
-
----
-
-## MVP Definition
-
-### Launch With (v2.0 — this milestone)
-
-Minimum required to call the milestone complete.
-
-- [x] GEN4-01 — BLE scan already discovers Gen4 (already done; just needs validation)
-- [ ] GEN4-02 — `GooseDiscoveredDevice.generation` field populated at discovery
-- [ ] GEN4-03 — Onboarding copy acknowledges WHOOP 4.0
-- [ ] GEN4-04 — Device view shows generation label
-- [ ] GEN4-05 — Upload payload E2E test for Gen4 `device_generation`
-- [ ] ANDROID-01 — Cross-compile verified for `aarch64-linux-android`
-- [ ] ANDROID-02 — Thin JNI wrapper (`jni_bridge.rs`)
-- [ ] ANDROID-03 — ADR committed to `docs/adr/`
-- [ ] WEAR-02 — BLE scan includes standard HR monitor service UUID (0x180D already present)
-- [ ] WEAR-01 — `src/heart_rate_gatt_protocol.rs` Rust module with parse + tests
-- [ ] WEAR-03 — Upload payload identifies HR-monitor-sourced data correctly
-
-### Add After Validation (v2.x)
-
-- [ ] GEN4-D1 — Generation label in connection log
-- [ ] ANDROID-D1 — `Scripts/build_android_rust.sh` committed
-- [ ] ANDROID-D2 — Kotlin usage example in docs
-- [ ] WEAR-D1 — Protocol documentation for HR GATT module
-
-### Future Consideration (v3+)
-
-- [ ] Full Android app UI (Activities, ViewModel, UI framework)
-- [ ] Third wearable support (extract Wearable abstraction after two devices confirmed)
-- [ ] Background URLSession upload (complex, low value for personal use case)
-- [ ] Persistent upload queue (SQLite-backed; defer until data loss is observed in practice)
+- [ ] Upload queue persisted in SQLite to survive app restarts — deferred per PROJECT.md
+- [ ] Background URLSession upload — deferred per PROJECT.md
 
 ---
 
@@ -208,90 +137,103 @@ Minimum required to call the milestone complete.
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| GEN4-02 generation field in device struct | MEDIUM | LOW | P1 |
-| GEN4-03 onboarding copy | LOW | LOW | P1 |
-| GEN4-04 device view label | MEDIUM | LOW | P1 |
-| GEN4-05 upload E2E test | LOW | LOW | P1 |
-| ANDROID-01 cross-compile | HIGH | MEDIUM | P1 |
-| ANDROID-02 JNI wrapper | HIGH | MEDIUM | P1 |
-| ANDROID-03 ADR | MEDIUM | LOW | P1 |
-| WEAR-02 scan includes HR monitor UUID | HIGH | LOW | P1 |
-| WEAR-01 HR GATT Rust module | HIGH | HIGH | P1 |
-| WEAR-03 upload identifies device | MEDIUM | LOW | P1 |
-| GEN4-D1 connection log label | LOW | LOW | P2 |
-| ANDROID-D1 build script | LOW | LOW | P2 |
-| ANDROID-D2 Kotlin example | LOW | LOW | P2 |
-| WEAR-D1 protocol docs | MEDIUM | MEDIUM | P2 |
+| HR scan list UI | HIGH | LOW | P1 |
+| HR independent capture session | HIGH | HIGH | P1 |
+| CR-02 device_id filter | HIGH | MEDIUM | P1 |
+| Recovery V2 dashboard | HIGH | HIGH | P1 |
+| BLE reconnect backoff | MEDIUM | MEDIUM | P1 |
+| WHOOP RTC auto-sync | MEDIUM | MEDIUM | P1 |
+| pt-PT localisation | MEDIUM | MEDIUM | P1 |
+| RSSI bars in scan list | LOW | LOW | P2 |
+| Auto-stop scan on HR connect | LOW | LOW | P2 |
+| HR silent reconnect on re-open | LOW | LOW | P2 |
+
+**Priority key:**
+- P1: Must have for v3.0 milestone closure
+- P2: Should have, add within v3.0 phases where trivial
+- P3: Nice to have, future consideration
 
 ---
 
-## Complexity Analysis by Track
+## Expected User-Facing Behaviour Per Feature
 
-### Track 1: WHOOP Gen4 iOS Layer
-**Overall complexity: LOW** — the hard work (Rust parsing, frame classification, upload payload) is
-done. This track is 80% UI strings and struct fields.
+### BLE Device Scan List UI (HR Monitor)
 
-New code estimate:
-- `GooseDiscoveredDevice`: +1 `String` field
-- `GooseBLEClient+CentralDelegate.swift`: +3-5 lines to populate `generation` from advertised service
-- `OnboardingStepViews.swift`: string changes only
-- `DeviceView.swift`: +5-10 lines to display generation label
-- `GooseUploadServiceTests.swift` (new file or extension): unit test asserting `device_generation`
+Standard iOS BLE pairing flow:
+1. User opens a "HR Monitor" section (new tab entry or section within the existing More/Connect area)
+2. Taps "Scan" — animated indicator appears, list populates in real time
+3. Each row: device name + RSSI in dBm (already sorted by RSSI in `discoveredHRDevices`)
+4. Tap a row to connect → row shows "Connecting..."
+5. On connect: scan stops automatically, row shows "Connected" state, capture begins
+6. On failure: row shows error + "Retry" option
 
-### Track 2: Android Port Foundations
-**Overall complexity: MEDIUM** — requires NDK toolchain setup and JNI naming boilerplate, but the
-Rust code does not change; only a thin wrapper and documentation are added.
+Table stakes: Bluetooth-off state must show a message ("Enable Bluetooth in Settings"), not a broken empty list. The `centralManagerDidUpdateState` stub in `GooseBLEHRMonitorManager` is currently empty and must be wired up.
 
-Key risks:
-- `rusqlite` with `bundled` feature uses `cc` crate to compile SQLite C code; cross-compilation
-  for Android requires the NDK linker in `PATH` and a `.cargo/config.toml` `[target.*]` section
-  specifying the correct linker. This is the most likely stumbling block.
-- The JNI wrapper introduces the `jni` crate (or uses raw `extern "C"` with manual JNIEnv handling);
-  the `jni` crate is the safer approach and is well-maintained
+### HR Monitor Independent Capture Session
 
-New code estimate:
-- `Rust/core/src/jni_bridge.rs`: ~60-80 lines
-- `.cargo/config.toml`: linker entries for android targets
-- `Scripts/verify_android_build.sh`: ~20 lines
-- `docs/adr/0001-android-jni-bridge.md`: ~150 lines
+User expectation: tap "Start HR Capture" and the app records HR/RR data regardless of whether a WHOOP is connected. Stopping the HR capture session stops the upload queue for that device class only.
 
-### Track 3: Second Wearable (Standard HR GATT Monitor)
-**Overall complexity: MEDIUM-HIGH** — requires understanding the 0x2A37 Heart Rate Measurement
-characteristic format, implementing a Rust parser, and wiring it through the iOS pipeline.
+Architecture implication: a new `hrCaptureActive: Bool` flag on `GooseAppModel`, independent of `activeHealthPacketCapture`. The frame routing via `onNotification` already works; the gate that checks `activeHealthPacketCapture` before persisting must accept HR frames unconditionally when `hrCaptureActive` is true.
 
-The 0x2A37 format is Bluetooth SIG-standardised:
-- Byte 0: flags (bit 0 = HR format 8-bit/16-bit, bit 4 = RR present)
-- Bytes 1-2: HR value (8-bit or 16-bit per flag)
-- Remaining bytes: RR intervals (16-bit, units 1/1024 seconds)
+### WHOOP 4.0 RTC Clock Sync (BLE Write)
 
-This is simpler than the WHOOP proprietary frame format. The Rust module will be shorter than
-`protocol.rs` and does not need CRC or frame length headers.
+The WHOOP 4.0 drifts from real time (upstream issue #17). The fix path:
+1. At connection (`connectionState == "ready"`), read the strap clock: `writeClockCommand(.get, syncIfNeeded: true)`
+2. On response, compare `strapClockDate` to `Date()` — if drift exceeds threshold, auto-send `.set`
+3. `writeClockCommand(.set)` encodes current Unix timestamp in the proprietary WHOOP V5 command frame (not standard BLE CTS 0x1805 — WHOOP uses its own protocol)
+4. `strapClockStatus` + `strapClockOffsetSeconds` in DeviceView expose the result
 
-New code estimate:
-- `Rust/core/src/heart_rate_gatt_protocol.rs`: ~150-200 lines + tests
-- `GooseBLETypes.swift`: update `rustDeviceType` derivation for 0x180D service
-- `GooseBLEClient+CentralDelegate.swift`: handle non-WHOOP peripheral naming
-- `GooseAppModel+NotificationPipeline.swift`: route 0x2A37 notifications to new parser
-- `GooseUploadService.swift`: pass correct device type string for HR monitor
+The existing code has all the plumbing. The missing piece is auto-triggering `.get` at `"ready"` and conditionally sending `.set` without user intervention.
+
+### BLE Reconnect Backoff with UI Feedback
+
+Replace the current immediate `attemptAutomaticReconnect` (no delay, no limit) with:
+- Delay schedule: [0s, 1s, 2s, 4s, 8s, 16s, 32s, 60s, 60s, 60s] — 10 slots
+- After 10 attempts: circuit breaker trips, `reconnectState = "gave up after 10 attempts"`
+- `ReconnectBackoffBanner` in `DeviceView`: shows "Attempt N of 10 — next in Xs"
+- "Retry Now" button: cancels pending work item, triggers immediate attempt, resets countdown
+- "Stop Retrying" button: cancels all pending work items, sets `reconnectState = "stopped"`
+- Apply the same delay pattern to `GooseBLEHRMonitorManager.centralManager(_:didDisconnectPeripheral:error:)`
+
+### pt-PT Localisation
+
+iOS String Catalog workflow (Xcode 15+):
+1. Add `Localizable.xcstrings` to the `GooseSwift` target (no `.strings` files exist — clean start, no migration needed)
+2. Build once to trigger Xcode extraction of all `Text("...")` SwiftUI string literals
+3. Add "Portuguese (Portugal)" in Project Settings → Info → Localizations
+4. Translate extracted strings directly in the catalog editor
+5. Scope for v3.0: static UI labels in SwiftUI views only
+
+Dynamic runtime strings (e.g. `"ready"`, `"disconnected"`, `"unauthorized"`) that are assigned in `GooseBLEClient` serve dual purpose as diagnostic log values. These should be translated at the SwiftUI display layer using a mapping function, not at the assignment site, to preserve log readability.
+
+### Recovery V2 Dashboard
+
+`RecoveryV2OverviewPage` already renders a full hero + stat cards layout. The wiring needed:
+- `store.recoveryHRVDisplayText(for:)` — implement in `HealthDataStore+Cardio.swift` or a new `HealthDataStore+Recovery.swift` extension; calls `metrics.recovery.hrv` or equivalent bridge method
+- `store.recoveryRHRDisplayText(for:)` — same pattern
+- `store.recoveryScoreDisplayText(for:)` — calls `metrics.recovery.score` bridge method
+- Date picker already present in the scaffold (`selectedDate: Date` binding, `showingDatePicker` state)
+- Navigation from Health tab to Recovery V2 must be wired through `AppRouter`
+
+### CR-02 Per-Row device_id Filter
+
+In `capture_import.rs`, `active_device_id: None` is hard-coded (line 400), causing all imported frames to receive NULL device_id in SQLite, making per-device filtering impossible.
+
+Fix:
+- Swift side: pass the connected peripheral's `UUID.uuidString` when calling the frame import bridge method
+- Rust side: accept the device_id argument and set it on each inserted row instead of `None`
+- Query side: all bridge methods computing metrics from captured frames must add `WHERE device_id = ?` (with NULL fallback for legacy rows without device_id)
 
 ---
 
 ## Sources
 
-- Codebase read directly: `GooseSwift/GooseBLEClient.swift`, `GooseBLETypes.swift`,
-  `GooseBLEClient+UserActions.swift`, `GooseBLEClient+Parsing.swift`,
-  `GooseBLEClient+CentralDelegate.swift`, `GooseUploadService.swift`,
-  `GooseAppModel+Upload.swift`, `OnboardingStepViews.swift`,
-  `Rust/core/src/protocol.rs`, `Rust/core/Cargo.toml`, `Rust/core/src/bridge.rs`,
-  `Rust/core/include/goose_core_bridge.h`
-- PROJECT.md: `.planning/PROJECT.md` (constraints, active requirements, out-of-scope)
-- CoreBluetooth API: Context7 `/websites/developer_apple_corebluetooth`
-  `scanForPeripherals(withServices:options:)` — HIGH confidence
-- Android NDK JNI: Context7 `/android/ndk` — JNI naming convention, `System.loadLibrary`,
-  `JNI_OnLoad` registration — HIGH confidence
-- Rust Android build: Context7 `/rust-mobile/rust-android-examples`
-  `cargo-ndk`, `rustup target add aarch64-linux-android` — MEDIUM confidence
-- Bluetooth GATT 0x180D Heart Rate Service, 0x2A37 Measurement characteristic format:
-  Bluetooth SIG public specification (standard, HIGH confidence — no source needed)
-- Confidence: HIGH overall. All critical implementation facts come from direct codebase reads.
-  Android NDK details are MEDIUM (build environment specifics depend on local toolchain versions).
+- Apple CoreBluetooth documentation — `CBCentralManager`, `CBCentralManagerDelegate`, reconnection patterns: https://developer.apple.com/documentation/corebluetooth/cbcentralmanager (HIGH confidence)
+- Apple Xcode localisation documentation — String Catalog workflow: https://developer.apple.com/documentation/xcode/localizing-and-varying-text-with-a-string-catalog (HIGH confidence)
+- Upstream PR #18 `b-nnett/goose` — exponential backoff + circuit breaker + `ReconnectBackoffBanner` UX description (MEDIUM confidence — GitHub WebFetch)
+- Upstream issue #17 `b-nnett/goose` — RTC clock drift description (LOW confidence — issue contains no technical detail; implementation inferred from existing `writeClockCommand(.set)` in this codebase)
+- Codebase inspection — `GooseBLEClient+HRMonitor.swift`, `GooseBLEClient+Commands.swift`, `ConnectionView.swift`, `HealthRecoveryStressViews.swift`, `capture_import.rs` (HIGH confidence — direct Read tool)
+
+---
+*Feature research for: Goose v3.0 — HR monitor UX, reconnect backoff, RTC sync, device_id filter, Recovery V2, pt-PT localisation*
+*Researched: 2026-06-04*

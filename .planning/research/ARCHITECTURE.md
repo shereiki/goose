@@ -1,386 +1,425 @@
 # Architecture Research
 
-**Domain:** iOS biometric app — multi-device BLE + cross-platform Rust core (v2.0)
-**Researched:** 2026-06-03
-**Confidence:** HIGH (based on direct source code inspection of all relevant files)
-
----
+**Domain:** iOS BLE wearable app with Rust core — v3.0 feature integration
+**Researched:** 2026-06-04
+**Confidence:** HIGH (all findings from direct source inspection)
 
 ## Standard Architecture
 
 ### System Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         iOS SwiftUI Layer                         │
-│  ┌────────────────┐  ┌────────────────┐  ┌──────────────────┐   │
-│  │  GooseAppModel │  │ HealthDataStore │  │  GooseUpload-    │   │
-│  │  @MainActor    │  │  @MainActor    │  │  Service         │   │
-│  │  coordinator   │  │  query layer   │  │  (uploadQueue)   │   │
-│  └───────┬────────┘  └───────┬────────┘  └────────┬─────────┘   │
-│          │                   │                     │             │
-│  ┌───────▼────────┐  ┌───────▼────────┐           │             │
-│  │ GooseBLEClient │  │GooseRustBridge │           │ URLSession  │
-│  │ (CBCentral-    │  │ (JSON-over-FFI)│           │ POST        │
-│  │  Manager)      │  └───────┬────────┘           │ /v1/ingest  │
-│  └───────┬────────┘          │                    └─────────────┘
-│          │           ┌───────▼────────┐
-│  BLE     │           │ libgoose_core  │  staticlib (iOS)
-│  frames  │           │  Rust crate    │  cdylib (Android, future)
-└──────────┼───────────┴────────────────┴──────────────────────────┘
-           │
-   ┌───────▼───────────────────────────────────────────┐
-   │              BLE Layer (CoreBluetooth)             │
-   │   WHOOP Gen5 service: fd4b0001-...                 │
-   │   WHOOP Gen4 service: 61080001-...                 │
-   └───────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                        SwiftUI Views (@MainActor)               │
+│  HomeDashboardView  HealthMetricFamilyStrainViews  MoreTabView  │
+│  RecoveryV2OverviewPage (existing skeleton)                     │
+│  [NEW] HRMonitorScanView                                        │
+└───────────────────────────┬────────────────────────────────────┘
+                            │ @EnvironmentObject / @ObservedObject
+┌───────────────────────────▼────────────────────────────────────┐
+│   GooseAppModel (@MainActor coordinator)                        │
+│   @Published state — observed by all views                      │
+│   Extension files: +HealthCapture, +NotificationPipeline,       │
+│   +ActivityRecording, +Upload, +OvernightRun, +Lifecycle        │
+│   [MODIFY] +NotificationPipeline — remove WHOOP-session gate    │
+│   [NEW]    +HRMonitorSession — independent HR capture session   │
+└────────┬───────────────────────────────────┬───────────────────┘
+         │                                   │
+┌────────▼───────────┐           ┌───────────▼─────────────────┐
+│  GooseBLEClient     │           │  HealthDataStore             │
+│  (ObservableObject) │           │  (@MainActor, ObservableObj) │
+│  +Commands          │           │  +ActivitySnapshots          │
+│  +CentralDelegate   │           │  +Trends                     │
+│  +HRMonitor         │           │  +CoachSummaries             │
+│  [MODIFY] backoff   │           │  [NEW] +RecoveryV2           │
+│  [MODIFY] RTC sync  │           └────────────┬────────────────┘
+│  hrMonitorManager   │                        │
+│  (GooseBLEHRMonitor │           ┌────────────▼────────────────┐
+│   Manager — exists) │           │  GooseRustBridge (stateless) │
+└────────┬────────────┘           │  JSON-over-FFI               │
+         │ coreBluetoothQueue     │  metrics.daily_recovery_*    │
+┌────────▼────────────┐           │  [FIX] device_id namespace   │
+│  CoreBluetooth      │           └────────────┬────────────────┘
+│  CBCentralManager x2│                       │ synchronous FFI
+│  (WHOOP + HR monitor)│          ┌────────────▼────────────────┐
+└─────────────────────┘           │  Rust libgoose_core (SQLite) │
+                                  │  capture_import.rs           │
+                                  │  store.rs                    │
+                                  │  [FIX] CR-02 device_id query │
+                                  └─────────────────────────────┘
 ```
 
-### Component Responsibilities
+### Component Responsibilities (v3.0 scope)
 
-| Component | File(s) | Responsibility |
-|-----------|---------|----------------|
-| `GooseBLEClient` | `GooseBLEClient.swift` + `+*.swift` | CBCentralManager; scan, connect, characteristic routing, frame reassembly, command writes |
-| `GooseAppModel` | `GooseAppModel.swift` + `+*.swift` | @MainActor coordinator; wires BLE → parser → SQLite → upload pipeline |
-| `GooseRustBridge` | `GooseRustBridge.swift` | JSON-over-FFI; calls `goose_bridge_handle_json` / `goose_bridge_free_string` |
-| `CaptureFrameWriteQueue` | `CaptureFrameWriteQueue.swift` | Batched SQLite inserts via Rust bridge on background queue |
-| `OvernightSQLiteMirrorQueue` | `OvernightSQLiteMirrorQueue.swift` | Overnight guard: queues raw notification rows to Rust bridge |
-| `GooseUploadService` | `GooseUploadService.swift` | URLSession POST to `/v1/ingest-decoded`; 3-attempt retry with 1s/2s/4s backoff |
-| `GooseNotificationEvent` | `GooseBLETypes.swift` | BLE event value type; carries `rustDeviceType` derived from `characteristicUUID` prefix |
-| Rust `bridge.rs` | `Rust/core/src/bridge.rs` | Dispatcher for all 80+ bridge RPC methods; C ABI entry point |
-| Rust `protocol.rs` | `Rust/core/src/protocol.rs` | `DeviceType` enum (Gen4/Maverick/Puffin/Goose), frame parsing, `FrameAccumulator` |
+| Component | Current Responsibility | v3.0 Change |
+|-----------|----------------------|-------------|
+| `GooseBLEClient` | WHOOP BLE central; notification routing; command writes | Add backoff state vars + `scheduleReconnectWithBackoff()`; add `sendRTCSyncIfNeeded()` called from `processDiscoveredCharacteristics` for Gen4 only |
+| `GooseBLEClient+CentralDelegate` | `didDisconnectPeripheral` fires immediate reconnect | Replace immediate reconnect with `scheduleReconnectWithBackoff()` |
+| `GooseBLEHRMonitorManager` | HR scan/connect/notify (no scan UI caller, no independent session, no disconnect backoff) | Add `didDisconnectPeripheral` backoff; expose `@Published discoveredHRDevices` forwarding via owner |
+| `GooseAppModel` | Central coordinator; owns `activeHealthPacketCapture` | Add `activeHRMonitorCapture`, `hrMonitorCaptureStatus`, `hrMonitorCaptureFrameCount` `@Published` vars |
+| `GooseAppModel+NotificationPipeline` | `importCapturedFrames` gated on `activeHealthPacketCapture != nil` (line 170) | Split gate: WHOOP frames keep existing gate; HR frames check `activeHRMonitorCapture != nil` independently |
+| `GooseAppModel+HRMonitorSession` (NEW) | — | Start/stop independent HR capture session; wire `startHRMonitorScan()` / `connectHRMonitor()` |
+| `HealthDataStore+RecoveryV2` (NEW) | — | Bridge calls for `metrics.daily_recovery_metrics`; publish `@Published recoveryV2Metrics` |
+| `HealthRecoveryStressViews` | Skeleton Recovery V2 UI with placeholder timeline and insights sections | Wire timeline, insights sections to bridge-backed `HealthDataStore+RecoveryV2` data |
+| Rust `store.rs` | `device_id` column exists; per-row filter was reverted to no-op in v2.0 | Fix `active_device_id` namespace so per-row `device_id` matches the session's `active_device_id` |
+| `Localizable.xcstrings` (NEW) | No localisation infrastructure exists | Add String Catalog to `GooseSwift/` target; add pt-PT strings for all v3.0 UI text |
 
----
-
-## Integration Points for v2.0 Features
-
-### 1. WHOOP Gen4 — iOS Layer
-
-**Current state (verified by source inspection):** The Rust core is already complete. `DeviceType::Gen4` exists in `protocol.rs` with a 4-byte header and CRC8. The iOS BLE layer already scans both service UUIDs — they are listed in `whoopServices` at line 366 of `GooseBLEClient.swift`:
-
-```
-fd4b0001-cce1-4033-93ce-002d5875f58a  (Gen5/Maverick)
-61080001-8d6d-82b8-614a-1c8cb0f8dcc6  (Gen4)
-```
-
-`notificationCharacteristicIDs` already includes the Gen4 characteristic UUIDs (`61080003` through `61080007`). The `rustDeviceType` routing is live: `GooseNotificationEvent.rustDeviceType` in `GooseBLETypes.swift:34-36` returns `"GEN4"` when `characteristicUUID` has prefix `"610800"`, and `"GOOSE"` otherwise. `GooseUploadService` already maps `"GEN4"` to `device_generation: "4.0"`.
-
-**What is actually missing (iOS-only gap):**
-
-| Gap | Location | Change required |
-|-----|----------|-----------------|
-| `supportsV5*` computed properties | `GooseBLEClient+Commands.swift:147-165` | Currently checks for `fd4b0002` prefix only; blocks command writes on Gen4 connections; need to also accept `61080002` |
-| Onboarding device recognition | `GooseBLEClient+Parsing.swift:336` | `isWhoopName()` accepts any name containing "whoop" (case-insensitive); Gen4 device names should be tested against real hardware to confirm they contain "whoop" |
-| `supportsV5*` UI hint in `alarmWriteSupportSummary` | `GooseBLEClient.swift:898` | The message "Alarm writes need fd4b0002 V5 command framing" will be wrong for Gen4; update to include Gen4 characteristic |
-
-**Minimal change: one file.** Modify `GooseBLEClient+Commands.swift` only. Add `isGen4CommandCharacteristic` mirroring `isV5CommandCharacteristic`, then update `supportsV5*` guards to accept either. No new files.
-
----
-
-### 2. Android JNI Bridge
-
-**Current Cargo.toml state (verified):** `crate-type = ["rlib", "staticlib", "cdylib"]` — `cdylib` is already declared. The shared object for Android is available without changing `Cargo.toml`.
-
-**Recommended approach: thin JNI wrapper inside the same crate, in `bridge.rs`.**
-
-Rationale: the existing C ABI (`goose_bridge_handle_json` / `goose_bridge_free_string`) is already a thin wrapper over `handle_bridge_request`. Adding JNI symbols adds approximately 30 lines and zero new build complexity. A separate crate would require its own `Cargo.toml`, target overrides, CI configuration, and cross-dependency management — all overhead for two function signatures. `#[cfg(target_os = "android")]` gates the code at compile time; iOS builds are completely unaffected.
-
-**Structure in `Rust/core/src/bridge.rs`:**
-
-```rust
-#[cfg(target_os = "android")]
-mod jni_bridge {
-    use jni::JNIEnv;
-    use jni::objects::{JClass, JString};
-    use jni::sys::jstring;
-
-    #[no_mangle]
-    pub unsafe extern "C" fn Java_com_goose_NativeLib_bridgeHandleJson(
-        mut env: JNIEnv,
-        _class: JClass,
-        request: JString,
-    ) -> jstring {
-        let req: String = env.get_string(&request).unwrap().into();
-        let resp = super::handle_bridge_request_str(&req);
-        env.new_string(resp).unwrap().into_raw()
-    }
-}
-```
-
-This requires adding `jni = "0.21"` to `[target.'cfg(target_os = "android")'.dependencies]` in `Cargo.toml` and extracting a `handle_bridge_request_str(input: &str) -> String` helper from the existing C ABI function (three-line refactor).
-
-**Build toolchain:** Use `cargo-ndk` to cross-compile to `aarch64-linux-android`. Add `Scripts/build_android_rust.sh` mirroring `Scripts/build_ios_rust.sh`. NDK path is the only required environment variable.
-
-**Modified files:**
-- `Rust/core/src/bridge.rs` — add `#[cfg(target_os = "android")]` JNI module + extract string helper
-- `Rust/core/Cargo.toml` — add `[target.'cfg(target_os = "android")'.dependencies]` block with `jni`
-
-**New files:**
-- `Scripts/build_android_rust.sh`
-- `docs/ADR-android-jni.md`
-
----
-
-### 3. Additional Wearable (Second Device Type E2E)
-
-**Where device-type routing happens in the existing pipeline:**
-
-The routing decision happens at exactly one point: `GooseNotificationEvent.rustDeviceType` in `GooseBLETypes.swift:34-36`. This computed property reads `characteristicUUID` and returns a string that flows immutably through the entire pipeline — parser, Rust bridge args, upload payload. There is no re-derivation or late binding downstream.
-
-```
-characteristic UUID "61080003-..."
-    → GooseNotificationEvent.rustDeviceType = "GEN4"   ← single derivation point
-    → bridge arg device_type: "GEN4"
-    → Rust DeviceType::Gen4 → 4-byte header, CRC8
-    → device_generation "4.0" in upload payload
-```
-
-**For a second wearable (e.g., Polar H10), changes required at each layer:**
-
-| Layer | File | Change |
-|-------|------|--------|
-| BLE scan | `GooseBLEClient.swift:366` | Add Polar service UUID to `whoopServices` array |
-| Device identity filter | `GooseBLEClient+Parsing.swift:336` | `isWhoopName()` is too narrow; extract `isKnownWearableName()` or add separate check |
-| `rustDeviceType` routing | `GooseBLETypes.swift:34` | Extend `rustDeviceType` to return `"POLAR"` for Polar characteristic UUID prefix |
-| Rust frame parser | New: `Rust/core/src/protocol_polar.rs` | Device-specific `ParsedFrame` logic |
-| Rust bridge dispatch | `Rust/core/src/bridge.rs` | Add `"polar.parse_frame"` to `BRIDGE_METHODS` and `handle_bridge_request` match |
-| `lib.rs` module declaration | `Rust/core/src/lib.rs` | `pub mod protocol_polar;` |
-| Upload payload | `GooseUploadService.swift:88` | Extend `deviceGeneration` mapping or add `device_type` field |
-
-**Clean abstraction — WearableDescriptor:**
-
-The current code scatters device identity across several arrays and functions (`whoopServices`, `commandCharacteristicIDs`, `notificationCharacteristicIDs`, `debugMenuCharacteristicIDs`, `isWhoopName`, `isV5CommandCharacteristic`, `isWhoopService`). Introducing a descriptor struct now (in Phase 6) avoids extending each array individually in Phase 8:
-
-```swift
-struct WearableDescriptor {
-  let brandName: String
-  let serviceUUIDs: [CBUUID]
-  let commandCharacteristicUUIDs: [CBUUID]
-  let notificationCharacteristicUUIDs: [CBUUID]
-  let debugMenuCharacteristicUUIDs: [CBUUID]
-  let rustDeviceType: String
-  let isKnownName: (String) -> Bool
-}
-```
-
-`GooseBLEClient` holds `[WearableDescriptor]` and all UUID lookups, name checks, and `rustDeviceType` derivation delegate to the matching descriptor. No protocol conformance, no dynamic dispatch, consistent with the property-based composition style of the codebase.
-
----
-
-## Recommended Project Structure Changes
+## Recommended Project Structure (v3.0 additions)
 
 ```
 GooseSwift/
-├── GooseBLEClient.swift              # MODIFY (Phase 6): whoopServices -> wearableDescriptors
-├── GooseBLEClient+Commands.swift     # MODIFY (Phase 6): supportsV5* guards accept Gen4
-├── GooseBLEClient+Parsing.swift      # MODIFY (Phase 6): isWhoopName -> isKnownWearableName
-├── GooseBLETypes.swift               # MODIFY (Phase 8): rustDeviceType routing for second wearable
-├── WearableDescriptor.swift          # NEW (Phase 6): device descriptor value type
-├── GooseUploadService.swift          # MODIFY (Phase 8): device_type field in payload
+├── GooseBLEClient.swift                   # Add: backoff state vars (reconnectAttemptCount,
+│                                          #   reconnectBackoffWorkItem); @Published discoveredHRDevices
+├── GooseBLEClient+Commands.swift          # Add: scheduleReconnectWithBackoff(), sendRTCSyncIfNeeded()
+├── GooseBLEClient+CentralDelegate.swift   # Modify: didDisconnectPeripheral uses backoff
+├── GooseBLEClient+HRMonitor.swift         # Modify: didDisconnectPeripheral adds HR backoff
+├── GooseAppModel.swift                    # Add: activeHRMonitorCapture, @Published HR session vars
+├── GooseAppModel+HRMonitorSession.swift   # NEW: start/stop independent HR session
+├── GooseAppModel+NotificationPipeline.swift  # Modify: decouple HR gate from WHOOP gate (line 170)
+├── HealthDataStore+RecoveryV2.swift       # NEW: bridge-backed recovery metrics for V2 dashboard
+├── HealthRecoveryStressViews.swift        # Modify: wire timeline/insights/trends sections
+├── HRMonitorScanView.swift                # NEW: SwiftUI scan/connect sheet for HR monitors
+├── Localizable.xcstrings                  # NEW: String Catalog (Xcode 15+ format)
 
 Rust/core/src/
-├── protocol.rs                       # EXISTING: DeviceType enum (Gen4 already done)
-├── protocol_polar.rs                 # NEW (Phase 8): Polar frame parser
-├── bridge.rs                         # MODIFY (Phase 7+8): JNI module, polar methods
-├── lib.rs                            # MODIFY (Phase 8): pub mod protocol_polar
-
-Scripts/
-├── build_ios_rust.sh                 # EXISTING: unchanged
-├── build_android_rust.sh             # NEW (Phase 7): cargo-ndk cross-compile
-
-docs/
-├── ADR-android-jni.md                # NEW (Phase 7): architecture decision record
+├── store.rs                               # Fix: device_id namespace in per-row filter query
+├── capture_import.rs                      # Verify: HrMonitor branch uses correct device_id format
 ```
-
----
-
-## Recommended Build Order: Phases 6 to 8
-
-### Phase 6: WHOOP Gen4 iOS Completion
-
-**Dependency:** Rust core already done. iOS-only changes.
-
-Changes:
-- `GooseBLEClient+Commands.swift` — fix `supportsV5*` guards to not block Gen4 sessions
-- `WearableDescriptor.swift` — introduce descriptor type (recommended here to avoid doing it under time pressure in Phase 8)
-- `GooseBLEClient.swift`, `GooseBLEClient+Parsing.swift` — refactor arrays and name check to use descriptor
-
-**Why first:** Lowest risk, no new Rust compilation targets, directly unblocks `GEN4-01` through `GEN4-05`. Can be validated without hardware if BLE simulation or a test harness is available.
-
-### Phase 7: Android JNI Foundations
-
-**Dependency:** Rust core compiles cleanly; Phase 6 work does not interfere.
-
-Changes:
-- `Rust/core/src/bridge.rs` — add `#[cfg(target_os = "android")]` JNI module
-- `Rust/core/Cargo.toml` — add `jni` dependency under cfg-gated target block
-- `Scripts/build_android_rust.sh` — cargo-ndk script
-- CI — add `aarch64-linux-android` compile check (no device test required)
-- `docs/ADR-android-jni.md` — decision record
-
-**Why second:** No iOS changes. Can be developed in parallel with Phase 6 on a separate branch. The `cdylib` target already declared in Cargo.toml means no build system surprises. The ADR deliverable is self-contained.
-
-### Phase 8: Additional Wearable E2E
-
-**Dependency:** Requires `WearableDescriptor` from Phase 6. Rust bridge extension pattern proven by Phase 7. Upload payload extension is the only cross-layer coordination remaining.
-
-Changes:
-- `GooseBLEClient.swift` — add second wearable descriptor to `wearableDescriptors`
-- `GooseBLETypes.swift` — extend `rustDeviceType` for new characteristic prefix
-- `Rust/core/src/protocol_polar.rs` — new frame parser module
-- `Rust/core/src/bridge.rs` — new bridge method(s) for second wearable
-- `Rust/core/src/lib.rs` — `pub mod protocol_polar`
-- `GooseUploadService.swift` — extend upload payload with `device_type` or extended mapping
-
-**Why last:** Requires the most cross-layer coordination (iOS BLE + Rust protocol + server upload schema). Doing it after Phase 6 validates the descriptor abstraction and after Phase 7 validates the Rust bridge extension pattern.
-
----
-
-## Data Flow
-
-### Real-Time BLE to SQLite to Upload (unchanged from v1.0, shown for reference)
-
-```
-[BLE notification from WHOOP]
-    ↓ characteristicUUID → rustDeviceType at GooseNotificationEvent init
-[GooseBLEClient] notificationIngestQueue reassembles frames
-    ↓ GooseNotificationEvent (rustDeviceType immutable from here)
-[GooseAppModel+NotificationPipeline]
-    ↓ notificationParseQueue
-[NotificationFrameParser.parseBatch(deviceType:)]
-    ↓ GooseRustBridge → bridge.rs → protocol.rs parse_frame
-[CaptureFrameWriteQueue] batched SQLite write
-    ↓ on write success
-[GooseAppModel+Upload.triggerUpload]
-    ↓ deviceType = event.rustDeviceType
-[GooseUploadService.performUpload] → POST /v1/ingest-decoded
-```
-
-**Key invariant:** `rustDeviceType` is derived once at `GooseNotificationEvent` creation from `characteristicUUID`, then carried immutably. No component downstream re-derives it.
-
-### Gen4 Frame Routing (existing, confirmed working)
-
-```
-characteristic UUID "61080003-..."
-    → rustDeviceType = "GEN4"        (GooseBLETypes.swift:34)
-    → bridge arg device_type: "GEN4" (GooseAppModel+NotificationPipeline.swift:514)
-    → Rust DeviceType::Gen4          (protocol.rs: 4-byte header, CRC8)
-    → device_generation "4.0"        (GooseUploadService.swift:88)
-```
-
-This is wired end-to-end. The only iOS gap is `supportsV5*` in `GooseBLEClient+Commands.swift` blocking command writes for Gen4 connections.
-
----
 
 ## Architectural Patterns
 
-### Pattern 1: Routing by Characteristic UUID Prefix
+### Pattern 1: Extension file per concern on GooseBLEClient / GooseAppModel
 
-**What:** Device type is determined at the BLE event boundary by examining which characteristic UUID delivered the notification. The UUID prefix (`fd4b` vs `61080`) encodes the generation.
+**What:** Large classes (GooseBLEClient, GooseAppModel) are split into focused extension files. Each extension owns one coherent slice of behaviour. All extensions share state on the parent class.
 
-**When to use:** Any time device-type-specific behavior is needed downstream — frame parsing, command writes, upload payload, UI display.
+**When to use:** Every new capability in v3.0. Do not add methods to the main `.swift` files; create a new `+Feature.swift` extension file.
 
-**Trade-offs:** Simple, zero overhead. Breaks if a future device shares UUID prefixes with WHOOP (unlikely given GATT conventions).
+**Trade-offs:** State lives on the parent class (good for cohesion); extension count grows (acceptable, already 10+ on GooseBLEClient).
 
-**Extend for new wearable:** Add a new prefix check to `GooseNotificationEvent.rustDeviceType`. With `WearableDescriptor`, the lookup becomes a flatMap over the descriptors array rather than a hardcoded if-chain.
+**Example for HRMonitorSession:**
+```swift
+// GooseAppModel+HRMonitorSession.swift
+extension GooseAppModel {
+  func startHRMonitorCapture() {
+    guard activeHRMonitorCapture == nil else { return }
+    activeHRMonitorCapture = ActiveHRMonitorCapture(sessionID: UUID().uuidString)
+    ble.startHRMonitorScan()
+    hrMonitorCaptureStatus = "Scanning..."
+  }
 
-### Pattern 2: Stateless Rust Bridge (JSON-RPC)
+  func stopHRMonitorCapture() {
+    guard activeHRMonitorCapture != nil else { return }
+    ble.stopHRMonitorScan()
+    activeHRMonitorCapture = nil
+    hrMonitorCaptureStatus = "Stopped"
+  }
+}
+```
 
-**What:** Every bridge call passes `database_path` in args. `GooseRustBridge` is not a singleton. Multiple instances (one per component) each call the same C FFI function.
+### Pattern 2: Independent capture session for HR monitor
 
-**When to use:** Any new component that needs Rust core access creates its own `GooseRustBridge()` instance on its background queue. Never call from `@MainActor` inline.
+**What:** `activeHRMonitorCapture: ActiveHRMonitorCapture?` on `GooseAppModel` mirrors the existing `activeHealthPacketCapture` pattern. The notification pipeline checks both independently.
 
-**Extend for new protocol:** Add new bridge methods to `BRIDGE_METHODS` constant and `handle_bridge_request` match arms. The compile-time test `bridge_methods_constant_matches_dispatcher` catches any drift.
+**When to use:** HR monitor frames must persist to SQLite regardless of whether a WHOOP session is active.
 
-### Pattern 3: Concern-Scoped Extension Files
+**Current gate (to be split) — GooseAppModel+NotificationPipeline.swift line 170:**
+```swift
+// CURRENT: HR frames dropped unless a WHOOP session is open
+guard activeHealthPacketCapture != nil || activeActivityPersistence != nil else { return }
 
-**What:** Large classes split into `+ConcernName.swift` extension files. Each extension owns a coherent behavioural slice.
+// AFTER: independent per-device-type gate
+let isHRFrame = event.serviceUUID == "180D"
+if isHRFrame {
+  guard activeHRMonitorCapture != nil else { return }
+} else {
+  guard activeHealthPacketCapture != nil || activeActivityPersistence != nil else { return }
+}
+```
 
-**When to use:** When a new behaviour is added to an existing class. Do not add to the main file.
+**Trade-offs:** Minimal code delta; does not affect the WHOOP capture path at all.
 
-**For new wearable:** Add `GooseBLEClient+WearableDiscovery.swift` if descriptor-based lookup logic grows beyond a few lines.
+### Pattern 3: Exponential backoff on BLE disconnect
 
----
+**What:** State vars on `GooseBLEClient` track attempt count and compute delay. `scheduleReconnectWithBackoff()` replaces the immediate `connect(peripheral, reason:)` call in `didDisconnectPeripheral`. Circuit breaker fires at 10 attempts.
+
+**When to use:** Both WHOOP central delegate (`GooseBLEClient+CentralDelegate`) and HR monitor delegate (`GooseBLEHRMonitorManager`) need this. The WHOOP backoff is added to `GooseBLEClient+Commands.swift`. The HR monitor backoff is a parallel, simpler version inside `GooseBLEHRMonitorManager`.
+
+**State to add to `GooseBLEClient`:**
+```swift
+var reconnectAttemptCount: Int = 0
+var reconnectBackoffWorkItem: DispatchWorkItem?
+static let reconnectMaxAttempts = 10
+static let reconnectBaseInterval: TimeInterval = 1.0
+static let reconnectMaxInterval: TimeInterval = 60.0
+```
+
+**Delay formula:** `min(baseInterval * pow(2.0, Double(attempt)), maxInterval)`
+
+**Reset:** `reconnectAttemptCount = 0` inside `didConnect` on successful connection.
+
+**Important:** HR monitor backoff state must live on `GooseBLEHRMonitorManager` directly, not on `GooseBLEClient` via `owner`. WHOOP reconnect cycles and HR monitor reconnect cycles are independent.
+
+### Pattern 4: Rust bridge call from HealthDataStore extension
+
+**What:** All bridge-backed data queries live in `HealthDataStore+*.swift` extensions. Each extension calls `bridge.request(method: "metrics.*", args: [...])` on a background queue, then publishes results as `@Published` state on `@MainActor`.
+
+**Constraint:** `GooseRustBridge.request()` is synchronous. Never call from `@MainActor` directly; dispatch to a background queue first.
+
+**When to use:** `HealthDataStore+RecoveryV2.swift` follows the exact pattern already established in `HealthDataStore+PacketInputs.swift` (lines 134-256).
+
+**Example:**
+```swift
+// HealthDataStore+RecoveryV2.swift
+func refreshRecoveryV2Metrics() {
+  let db = Self.defaultDatabasePath()
+  let bridge = self.bridge
+  Task.detached(priority: .utility) { [weak self] in
+    guard let self else { return }
+    let result = try? bridge.request(
+      method: "metrics.daily_recovery_metrics",
+      args: ["database_path": db, "start_time_unix_ms": ..., "end_time_unix_ms": ...]
+    )
+    await MainActor.run { self.recoveryV2Metrics = Self.parseRecoveryMetrics(result) }
+  }
+}
+```
+
+### Pattern 5: WHOOP 4.0 RTC sync on connect
+
+**What:** Call `writeClockCommand(.get, syncIfNeeded: true)` when `connectionState` transitions to `"ready"` and `activeDescriptor == .whoopGen4`. The existing `writeClockCommand` infrastructure already handles read-then-sync logic (in `GooseBLEClient+HistoricalHandlers.swift` lines 194-207) — RTC sync on connect only needs a caller.
+
+**When to use:** Hook into `processDiscoveredCharacteristics` (end of function, after `updateConnectionState("ready")`) in `GooseBLEClient+Commands.swift`.
+
+**Trade-off:** Adding the call directly after `updateConnectionState("ready")` is cleanest; avoids a cross-type callback. Use `DispatchQueue.main.asyncAfter(deadline: .now() + 1)` to avoid colliding with in-flight GATT discovery.
+
+### Pattern 6: String Catalogs for pt-PT localisation
+
+**What:** Xcode 15+ String Catalog (`.xcstrings`) is the current standard. A single `Localizable.xcstrings` file in the `GooseSwift/` target replaces the older `.strings`/`.stringsdict` per-locale system. The catalog holds all locales in one JSON file with source-language strings as keys.
+
+**When to use:** No localisation infrastructure currently exists. Adding `Localizable.xcstrings` is zero-disruption. Existing hardcoded strings become candidates for extraction in phases.
+
+**Scope for v3.0:** Only new strings introduced by v3.0 features need to be localised immediately (HRMonitorScanView strings, Recovery V2 section headers, RTC sync status strings). Existing UI strings can be extracted incrementally.
+
+## Data Flow
+
+### HR Monitor Independent Capture Flow (new)
+
+```
+User taps "Start HR Monitor Capture"
+    |
+GooseAppModel.startHRMonitorCapture()         [@MainActor]
+    |
+ble.startHRMonitorScan()                      [-> coreBluetoothQueue via hrMonitorManager]
+    | user selects device from HRMonitorScanView
+GooseAppModel.connectHRMonitor(device)        [@MainActor]
+    |
+GooseBLEHRMonitorManager.didUpdateValue(0x2A37)  [coreBluetoothQueue]
+    | owner.onNotification?(event)  [serviceUUID = "180D"]
+GooseAppModel.handleNotification(event)       [coreBluetoothQueue -> notificationIngestQueue]
+    | serviceUUID == "180D" -> check activeHRMonitorCapture
+importCapturedFrames(frames, event)           [notificationIngestQueue]
+    |
+CaptureFrameWriteQueue.enqueue(rows)          [captureFrameRowBuildQueue -> SQLite]
+```
+
+### BLE Reconnect Backoff Flow (new, both WHOOP and HR monitor)
+
+```
+didDisconnectPeripheral(peripheral, error)    [@MainActor, dispatched from coreBluetoothQueue]
+    |
+reconnectAttemptCount += 1
+if reconnectAttemptCount > maxAttempts -> updateReconnectState("circuit open"); return
+    |
+delay = min(base * 2^attempt, maxInterval)    [exponential]
+scheduleReconnectWithBackoff(peripheral, delay)
+    | DispatchQueue.main.asyncAfter(delay)
+connect(peripheral, reason: "auto.backoff.\(attempt)")
+    | on successful connect
+reconnectAttemptCount = 0                     [reset in didConnect]
+```
+
+### WHOOP 4.0 RTC Sync Flow (new)
+
+```
+processDiscoveredCharacteristics(...)         [main thread via dispatchCoreBluetoothDelegateToMainIfNeeded]
+    | commandCharacteristic found
+updateConnectionState("ready")
+    | if activeDescriptor == .whoopGen4
+scheduleRTCSyncIfNeeded()                     [DispatchQueue.main.asyncAfter(+1s)]
+    |
+writeClockCommand(.get, syncIfNeeded: true)   [existing path -> auto-syncs if offset > 5s]
+```
+
+### CR-02 device_id Filter Fix (Rust side)
+
+```
+capture_import.rs import_captured_frame_batch()
+    | for HrMonitor frames, CapturedFrameInput.device_id = peripheral.identifier.uuidString
+store.rs start_capture_session() sets active_device_id
+    | PROBLEM: active_device_id in capture session uses a different namespace/format
+    |          than per-row device_id from Swift, causing filter to never match
+Fix: align device_id format in capture session with per-row device_id
+     (both must use the same UUID string format, with or without dashes)
+```
+
+### Recovery V2 Data Flow (new)
+
+```
+HealthDataStore.refreshRecoveryV2Metrics()    [background Task]
+    |
+GooseRustBridge.request("metrics.daily_recovery_metrics", args: [db, date_range])
+    |
+Rust bridge.rs -> daily_recovery_metrics_bridge() -> store.daily_recovery_metrics_between()
+    |
+await MainActor.run { self.recoveryV2Metrics = parsed }
+    |
+HealthRecoveryStressViews observes @Published recoveryV2Metrics
+    | timeline, insights, trends sections populated
+```
+
+## Integration Points
+
+### Existing Components — Modified
+
+| Component | What Changes | Threading Constraint |
+|-----------|-------------|---------------------|
+| `GooseBLEClient` (main file) | Add backoff state vars; add `@Published discoveredHRDevices: [GooseDiscoveredDevice]` forwarded from manager | `@Published` on `@MainActor`; safe via `objectWillChange.send()` dispatch already in manager |
+| `GooseBLEClient+CentralDelegate` | `didDisconnectPeripheral` delegates reconnect to `scheduleReconnectWithBackoff()` instead of immediate `connect()` | Already dispatches to main; backoff `DispatchWorkItem` scheduled on `DispatchQueue.main` |
+| `GooseBLEClient+HRMonitor` | `GooseBLEHRMonitorManager.didDisconnectPeripheral` adds HR backoff; `didDiscover` updates forwarded `@Published` array | HR manager runs on `coreBluetoothQueue`; `DispatchQueue.main.async` for UI state |
+| `GooseBLEClient+Commands` | Add `scheduleReconnectWithBackoff()`, `sendRTCSyncIfNeeded()` | Both called from main thread; schedule main-thread work items |
+| `GooseAppModel` | Add `activeHRMonitorCapture`, `hrMonitorCaptureStatus`, `hrMonitorCaptureFrameCount` `@Published` vars | All `@Published` on `@MainActor` — no threading concern |
+| `GooseAppModel+NotificationPipeline` | Split `importCapturedFrames` gate at line 170 | No threading change; same queue path |
+| `HealthRecoveryStressViews` | Wire timeline/insights sections to bridge data from `HealthDataStore+RecoveryV2` | `@ObservedObject store` already on view; no new threading |
+| Rust `store.rs` | Fix per-row `device_id` namespace in the capture import query | Pure Rust; no threading implication for Swift |
+
+### New Components
+
+| Component | Depends On | Used By |
+|-----------|-----------|---------|
+| `GooseAppModel+HRMonitorSession.swift` | `GooseBLEClient.hrMonitorManager`, `activeHRMonitorCapture` on `GooseAppModel` | `HRMonitorScanView`, `GooseAppModel+NotificationPipeline` |
+| `HRMonitorScanView.swift` | `GooseAppModel` (`@EnvironmentObject`), `GooseBLEClient.discoveredHRDevices` (`@Published`) | Health tab or dedicated BLE sheet |
+| `HealthDataStore+RecoveryV2.swift` | `GooseRustBridge`, `metrics.daily_recovery_metrics` bridge method | `HealthRecoveryStressViews` |
+| `Localizable.xcstrings` | Xcode 15 build toolchain | All new v3.0 views |
+
+### Internal Boundaries
+
+| Boundary | Communication | Notes |
+|----------|---------------|-------|
+| `GooseAppModel` <-> `GooseBLEHRMonitorManager` | `ble.hrMonitorManager.*` direct calls; forwarded `@Published discoveredHRDevices` on `GooseBLEClient` for UI observation | `hrMonitorManager` itself is not `@Published`; forward discovered devices list to `GooseBLEClient` |
+| `GooseAppModel+HRMonitorSession` <-> `GooseAppModel+NotificationPipeline` | Shared `activeHRMonitorCapture` var on `GooseAppModel` | Both extensions run on `@MainActor`; no lock needed |
+| `HealthDataStore+RecoveryV2` <-> `HealthRecoveryStressViews` | `@Published recoveryV2Metrics` on `HealthDataStore` | Follow same pattern as `packetInputReports` |
+| Swift <-> Rust (`device_id` fix) | CR-02 fix is Rust-only; Swift side already passes `peripheral.identifier.uuidString` | Verify format consistency: UUID string with dashes in both capture session start and per-row insert |
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Duplicating UUID Arrays Across Lists
+### Anti-Pattern 1: Binding `GooseBLEHRMonitorManager.discoveredHRDevices` directly in SwiftUI
 
-**What people do:** Adding a Gen4 or Polar UUID to `notificationCharacteristicIDs` but forgetting `serviceDiscoveryIDs`, `debugMenuCharacteristicIDs`, or `commandCharacteristicIDs`.
+**What people do:** Bind `ble.hrMonitorManager.discoveredHRDevices` directly in a SwiftUI `ForEach`.
 
-**Why it's wrong:** Each array is checked independently. A UUID missing from `serviceDiscoveryIDs` means `discoverServices` never discovers it, silently breaking capture.
+**Why it's wrong:** `GooseBLEHRMonitorManager` is not an `ObservableObject`. Mutations call `objectWillChange.send()` on the owning `GooseBLEClient`, not on `GooseBLEHRMonitorManager`. A direct array reference in SwiftUI will not trigger view updates.
 
-**Do this instead:** Centralise in `WearableDescriptor`. The descriptor owns all UUIDs for a device family. `GooseBLEClient` builds combined arrays by flatMapping over all descriptors.
+**Do this instead:** Add `@Published var discoveredHRDevices: [GooseDiscoveredDevice] = []` to `GooseBLEClient`, updated from the manager's `didDiscover` callback. `GooseBLEClient` is already an `@ObservedObject` in views.
 
-### Anti-Pattern 2: Late Device Type Derivation
+### Anti-Pattern 2: Calling `GooseRustBridge.request()` from `@MainActor`
 
-**What people do:** Deriving `rustDeviceType` from `peripheral.name` or from a stored property after connection, rather than from `characteristicUUID` at notification time.
+**What people do:** Call bridge methods inline in a `HealthDataStore` method that runs on `@MainActor`.
 
-**Why it's wrong:** A device can advertise a name before services are discovered; name-based derivation is ambiguous if a user owns both Gen4 and Gen5. Characteristic UUID is unambiguous and available at every notification event.
+**Why it's wrong:** `goose_bridge_handle_json` blocks the calling thread. On `@MainActor`, this freezes the UI.
 
-**Do this instead:** Keep `GooseNotificationEvent.rustDeviceType` as the single source of truth, derived at event creation.
+**Do this instead:** `Task.detached(priority: .utility)` or `DispatchQueue.global().async`. Publish results back via `await MainActor.run { self.property = ... }`. See `HealthDataStore+PacketInputs.swift` lines 134-256 for the established pattern.
 
-### Anti-Pattern 3: Separate JNI Crate
+### Anti-Pattern 3: Storing backoff state on `GooseBLEClient` and reading it from `GooseBLEHRMonitorManager` via `owner`
 
-**What people do:** Create a `goose-jni` crate that depends on `goose-core` to avoid "polluting" the iOS crate with Android code.
+**What people do:** Use one `reconnectAttemptCount` on `GooseBLEClient` for both WHOOP and HR monitor reconnect cycles.
 
-**Why it's wrong:** Doubles build configurations, CI targets, and version synchronisation. `#[cfg(target_os = "android")]` already gates the code at compile time — iOS static library is unaffected.
+**Why it's wrong:** WHOOP and HR monitor reconnect cycles are independent. A WHOOP reconnect failure must not exhaust the HR monitor circuit breaker.
 
-**Do this instead:** Add a `#[cfg(target_os = "android")]` module in `bridge.rs`.
+**Do this instead:** Add separate `hrReconnectAttemptCount: Int` and `hrReconnectBackoffWorkItem: DispatchWorkItem?` directly to `GooseBLEHRMonitorManager`. WHOOP backoff state lives on `GooseBLEClient`.
 
-### Anti-Pattern 4: Calling GooseRustBridge from @MainActor Inline
+### Anti-Pattern 4: Adding HR monitor capture session state to `GooseBLEClient`
 
-**What people do:** Calling `bridge.request(method:args:)` directly inside a SwiftUI view or `@MainActor` method.
+**What people do:** Add `@Published var hrMonitorCaptureStatus` to `GooseBLEClient`.
 
-**Why it's wrong:** `goose_bridge_handle_json` is synchronous and blocks the calling thread. On the main thread this freezes the UI.
+**Why it's wrong:** Capture session lifecycle is `GooseAppModel`'s responsibility. `GooseBLEClient` owns BLE connectivity; `GooseAppModel` owns session state.
 
-**Do this instead:** Dispatch to a background `DispatchQueue`. All existing callers (`GooseUploadService.uploadQueue`, `notificationParseQueue`, `CaptureFrameWriteQueue`) follow this pattern.
+**Do this instead:** Add capture session state (`activeHRMonitorCapture`, `hrMonitorCaptureStatus`, `hrMonitorCaptureFrameCount`) to `GooseAppModel`. Add only connectivity state (`discoveredHRDevices`, `hrConnectionState`) to `GooseBLEClient`.
 
----
+## Build Order (Suggested)
 
-## New vs. Modified Components Summary
+### Step 1: CR-02 device_id Fix (Rust, isolated)
 
-| Component | Status | Phase |
-|-----------|--------|-------|
-| `GooseBLEClient+Commands.swift` | MODIFY: `supportsV5*` accept Gen4 command characteristic | 6 |
-| `WearableDescriptor.swift` | NEW: device descriptor value type | 6 |
-| `GooseBLEClient.swift` | MODIFY: `whoopServices` becomes `wearableDescriptors` | 6 |
-| `GooseBLEClient+Parsing.swift` | MODIFY: `isWhoopName` widens to `isKnownWearableName` | 6 |
-| `Rust/core/src/bridge.rs` | MODIFY: JNI module (Phase 7) + wearable methods (Phase 8) | 7, 8 |
-| `Rust/core/Cargo.toml` | MODIFY: `jni` dependency (cfg-gated for android) | 7 |
-| `Scripts/build_android_rust.sh` | NEW: cargo-ndk cross-compile script | 7 |
-| `docs/ADR-android-jni.md` | NEW: architecture decision record | 7 |
-| `Rust/core/src/protocol_polar.rs` | NEW: second wearable frame parser | 8 |
-| `Rust/core/src/lib.rs` | MODIFY: `pub mod protocol_polar` | 8 |
-| `GooseBLETypes.swift` | MODIFY: `rustDeviceType` routing for second wearable | 8 |
-| `GooseUploadService.swift` | MODIFY: `device_type` field or extended mapping in payload | 8 |
+**Rationale:** Pure Rust change. Zero Swift impact. Fixing it first means all subsequent testing with HR monitor capture produces correct per-device storage. Unblocks meaningful integration testing.
 
-### Unchanged Components (all three phases)
+**Files:** `Rust/core/src/store.rs`, `Rust/core/src/capture_import.rs`
+**Risk:** LOW — SQL query fix; existing Rust integration tests cover capture import
 
-- `GooseRustBridge.swift` — C ABI is stable; JNI is an additive symbol
-- `GooseAppModel+NotificationPipeline.swift` — routes by `event.rustDeviceType` string; new values flow through unchanged
-- `CaptureFrameWriteQueue.swift` — device-agnostic batched write
-- `OvernightSQLiteMirrorQueue.swift` — device-agnostic
-- `GooseAppModel+Upload.swift` — calls `triggerUpload` with `event.rustDeviceType`; no change needed for Gen4 or new wearable
-- `Rust/core/src/protocol.rs` — `DeviceType::Gen4` already implemented; new wearable gets its own module
+### Step 2: BLE Reconnect Backoff — WHOOP + HR Monitor
 
----
+**Rationale:** Infrastructure change that touches both `GooseBLEClient+CentralDelegate` and `GooseBLEHRMonitorManager`. Must be done before HR monitor scan UI is wired (otherwise reconnect behaviour is undefined after user connects an HR monitor and it drops). Does not depend on any other v3.0 feature.
+
+**Files:** `GooseBLEClient.swift` (add state vars), `GooseBLEClient+Commands.swift` (add `scheduleReconnectWithBackoff()`), `GooseBLEClient+CentralDelegate.swift` (hook in backoff), `GooseBLEClient+HRMonitor.swift` (HR manager `didDisconnectPeripheral`)
+**Risk:** MEDIUM — changes live reconnect path; requires real-device testing
+
+### Step 3: HR Monitor Scan/Connect UI + Independent Capture Session
+
+**Rationale:** Depends on Step 2 (backoff) being stable. Adds `HRMonitorScanView`, wires `startHRMonitorScan()`, adds `GooseAppModel+HRMonitorSession`, and modifies `GooseAppModel+NotificationPipeline` to decouple the capture gate. These sub-tasks are tightly coupled; implement together.
+
+**Sub-tasks (sequential within step):**
+1. Add `@Published discoveredHRDevices` forwarding on `GooseBLEClient`
+2. Add `activeHRMonitorCapture` + `@Published` status vars on `GooseAppModel`
+3. Create `GooseAppModel+HRMonitorSession.swift`
+4. Modify `GooseAppModel+NotificationPipeline.swift` gate at line 170
+5. Create `HRMonitorScanView.swift`
+
+**Files:** `GooseBLEClient.swift`, `GooseAppModel.swift`, `GooseAppModel+HRMonitorSession.swift` (new), `GooseAppModel+NotificationPipeline.swift`, `HRMonitorScanView.swift` (new)
+**Risk:** MEDIUM — modifies notification pipeline (hot path for all BLE frames)
+
+### Step 4: WHOOP 4.0 RTC Sync
+
+**Rationale:** Depends on Step 2 (backoff) because the RTC sync call occurs at the `"ready"` connection state, which is in the same `processDiscoveredCharacteristics` code path modified for backoff. Isolated to Gen4 peripherals; no impact on WHOOP 5.0 sessions.
+
+**Files:** `GooseBLEClient+Commands.swift` (add `sendRTCSyncIfNeeded()`; call from `processDiscoveredCharacteristics`)
+**Risk:** LOW — uses existing `writeClockCommand(.get, syncIfNeeded: true)` infrastructure; Gen4-only guard
+
+### Step 5: Recovery V2 Dashboard (bridge-backed data)
+
+**Rationale:** Self-contained. `RecoveryV2OverviewPage` view skeleton already exists (`HealthRecoveryStressViews.swift`). Only needs `HealthDataStore+RecoveryV2.swift` to provide `@Published` data and the view wired to consume it. No dependencies on other v3.0 features.
+
+**Files:** `HealthDataStore+RecoveryV2.swift` (new), `HealthRecoveryStressViews.swift` (wire timeline/insights sections)
+**Risk:** LOW — additive; follows established bridge query pattern; bridge methods already exist in Rust
+
+### Step 6: pt-PT Localisation
+
+**Rationale:** Should be done last because it touches every new string introduced by Steps 3-5. Doing it after the UI is stable avoids re-running string extraction multiple times.
+
+**Files:** `Localizable.xcstrings` (new, added to `GooseSwift/` target), pt-PT translations for all new v3.0 UI text
+**Risk:** LOW — additive; does not change logic
+
+## Scaling Considerations
+
+This is a single-user personal device app. The following capacity concerns apply for v3.0:
+
+| Concern | Current State | v3.0 Impact |
+|---------|--------------|-------------|
+| SQLite write throughput | Handled by `CaptureFrameWriteQueue` with batching | HR monitor adds a second concurrent write source; same queue, same DB — acceptable |
+| `@Published` state mutations | GooseAppModel has 60+ @Published vars | Each new HR monitor var adds one more; no performance concern |
+| BLE queue contention | Two `CBCentralManager` instances share `coreBluetoothQueue` | `GooseBLEHRMonitorManager` was already created with the same queue in v2.0; no change |
+| Rust bridge synchrony | `goose_bridge_handle_json` blocks calling thread | No new synchronous calls added to hot paths; Recovery V2 query is on background queue |
 
 ## Sources
 
-- Direct source inspection: `GooseBLEClient.swift` (lines 366–420, service and characteristic UUID arrays)
-- Direct source inspection: `GooseBLETypes.swift` (lines 34–36, `rustDeviceType` derivation)
-- Direct source inspection: `GooseBLEClient+Commands.swift` (lines 147–165, `supportsV5*` guards)
-- Direct source inspection: `GooseBLEClient+Parsing.swift` (lines 302–410, `whoopIdentityEvidence`, `isWhoopName`)
-- Direct source inspection: `GooseBLEClient+CentralDelegate.swift` (lines 89–200, scan and connect flow)
-- Direct source inspection: `GooseAppModel+NotificationPipeline.swift` (lines 367–523, parse context and device type propagation)
-- Direct source inspection: `GooseAppModel+Upload.swift` (upload trigger hook)
-- Direct source inspection: `GooseUploadService.swift` (lines 29–88, `deviceType` to `device_generation` mapping)
-- Direct source inspection: `Rust/core/src/protocol.rs` (lines 24–59, `DeviceType` enum with Gen4 header/CRC logic)
-- Direct source inspection: `Rust/core/src/lib.rs` (module list)
-- Direct source inspection: `Rust/core/Cargo.toml` (crate-type declaration, dependency list)
-- `jni` crate 0.21 — standard Rust JNI bindings for Android: HIGH confidence (widely used, stable API)
+All findings from direct source inspection of the repository. No external references required.
+
+- `GooseSwift/GooseBLEClient+HRMonitor.swift` — existing HR monitor manager; confirmed: no scan UI caller, no disconnect backoff in `didDisconnectPeripheral`
+- `GooseSwift/GooseBLEClient+CentralDelegate.swift` — existing disconnect path (lines 228-283); immediate reconnect, no backoff
+- `GooseSwift/GooseAppModel+NotificationPipeline.swift` — capture frame gate (line 170); gated on WHOOP `activeHealthPacketCapture` only
+- `GooseSwift/GooseAppModel.swift` — `activeHealthPacketCapture` pattern (line 99); HR monitor mirrors this
+- `GooseSwift/HealthDataStore+ActivitySnapshots.swift` — `dailyRecoveryMetrics()` bridge call pattern (lines 7-10)
+- `GooseSwift/HealthDataStore+PacketInputs.swift` — background bridge query pattern (lines 134-256)
+- `GooseSwift/HealthRecoveryStressViews.swift` — existing Recovery V2 skeleton with placeholder timeline and insights sections
+- `Rust/core/src/capture_import.rs` — HrMonitor branch (line 637); `active_device_id: None` (line 400) is the CR-02 root cause
+- `GooseSwift/GooseBLEClient.swift` — `ClockCommandKind.set(Date)` (line 462); `strapClockAutoSyncThresholdSeconds` (line 354); no backoff state vars present
 
 ---
-*Architecture research for: Goose v2.0 Multi-Device & Platform Foundations*
-*Researched: 2026-06-03*
+*Architecture research for: Goose v3.0 — Wearable UX, CI Hardening & RTC Sync*
+*Researched: 2026-06-04*

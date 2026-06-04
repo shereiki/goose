@@ -1,317 +1,283 @@
 # Pitfalls Research
 
-**Domain:** Multi-device BLE expansion + Android cross-compilation + second wearable — on top of existing iOS+Rust BLE capture app
-**Researched:** 2026-06-03
-**Confidence:** HIGH — all pitfalls derived from direct code inspection of the existing codebase (GooseBLEClient, GooseNotificationEvent, GooseUploadService, store.rs, protocol.rs, Cargo.toml, build_ios_rust.sh) and verified against CoreBluetooth delegate semantics, Rust cross-compilation requirements, and JNI memory rules.
+**Domain:** v3.0 feature additions to existing iOS BLE + Rust core app — HR monitor scan UI, independent HR capture, CR-02 device_id filter, Recovery V2 dashboard, pt-PT localisation, WHOOP 4.0 RTC sync, BLE reconnect backoff
+**Researched:** 2026-06-04
+**Confidence:** HIGH — all pitfalls derived from direct code inspection of the live codebase (GooseBLEClient, GooseBLEClient+HRMonitor, GooseBLEClient+CentralDelegate, GooseBLEClient+Commands, HealthDataStore, bridge.rs, store.rs) plus known v2.0 revert history (CR-02 namespace mismatch, WEAR-02 partial state).
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause data loss, silent frame misrouting, or require rewrites.
+Mistakes that cause data loss, silent misrouting, rewrites, or App Store rejection.
 
 ---
 
-### Pitfall 1: Device type string mismatch between Swift and Rust
+### Pitfall 1: Two CBCentralManager instances sharing one DispatchQueue — delegate callbacks are serialised, not parallelised
 
 **What goes wrong:**
-`GooseNotificationEvent.rustDeviceType` is derived purely from the characteristic UUID prefix: `characteristicUUID.lowercased().hasPrefix("610800") ? "GEN4" : "GOOSE"`. This string is then passed verbatim into the Rust bridge as `"device_type"` in every bridge call. The Rust `parse_device_type` function accepts `"GEN4"` for Gen4. Everything works for WHOOP Gen4 (service `61080001-...`) and Gen5/Goose (`fd4b0001-...`). The pitfall is a second wearable: its characteristic UUIDs will not start with `"610800"`, so it falls through to `"GOOSE"` — which maps to the Goose (Gen5) protocol parser. The bytes get fed to the wrong parser, producing either silent garbage or a CRC validation failure with no user-visible error.
+`GooseBLEClient` creates its `CBCentralManager` on `coreBluetoothQueue` (a private `.utility` DispatchQueue). `GooseBLEHRMonitorManager.start(queue:)` is called with the same `coreBluetoothQueue`. Both managers share a single serial queue. This means a slow delegate callback from the WHOOP manager (e.g., a heavy `didDiscover` path that calls `objectWillChange.send()` with a `DispatchQueue.main.async`) blocks the HR monitor delegate from receiving its next notification, and vice versa. Under normal conditions this is benign; under high HR notification frequency (1 Hz from 0x2A37) combined with a WHOOP historical sync (which fires many delegate callbacks in sequence), the shared queue becomes a bottleneck and HR notifications are delayed or queued beyond the next BLE connection event deadline.
 
 **Why it happens:**
-The device type classification is implicit — derived from a UUID prefix heuristic rather than an explicit enum at connect time. Adding a third device that uses neither UUID prefix requires extending this heuristic, but the heuristic is a computed `var` on `GooseNotificationEvent` deep in `GooseBLETypes.swift`. Developers adding a new wearable are likely to add the UUID to the scan list and write a new Rust parsing module, but forget to update `rustDeviceType` — and every notification from that device silently routes to the wrong parser.
+`GooseBLEHRMonitorManager.start(queue:)` was written to accept any queue and was handed `coreBluetoothQueue` for convenience (the WHOOP manager already uses it). Sharing a queue is not forbidden by CoreBluetooth, but it creates a hidden serialisation dependency between two independent BLE sessions.
 
-**Consequences:**
-Frames from the second wearable are parsed by the wrong Rust module. `parse_frame_hex` returns either an error (dropped silently in the pipeline) or a structurally malformed `ParsedFrame` that gets stored in `decoded_frames` with a wrong `device_type` TEXT column value. Metric algorithms that filter by `device_type` produce nonsense output. The frame reassembly key in `gooseFrames(in:event:)` uses `rustDeviceType` as a discriminator, so the wrong header length (4 vs 8 bytes) is used, corrupting reassembly.
-
-**Prevention:**
-Introduce a proper `WearableKind` enum in `GooseBLETypes.swift` that is resolved at service discovery time (in `processDiscoveredCharacteristics`) and stored on `GooseBLEClient` alongside `commandCharacteristic`. Propagate `WearableKind` through `GooseNotificationEvent` (or store it on the active peripheral context). Never derive device type from a characteristic UUID prefix at notification time — that approach breaks the moment a third device exists.
+**How to avoid:**
+Give `GooseBLEHRMonitorManager` its own dedicated `DispatchQueue` (e.g., `com.goose.swift.corebluetooth.hr`). Isolate WHOOP and HR monitor delegate execution. The HR monitor `didUpdateValueFor` callback explicitly documents "do NOT hop to @MainActor" — this discipline is correct, but the queue isolation must also be correct to make it effective.
 
 **Warning signs:**
-- A new wearable's notifications appear in the log with `type=GOOSE` despite the device not being a WHOOP Gen5.
-- `parse_frame_hex` returns CRC errors for every frame from the new device.
-- Frame reassembly for the new device produces only zero-length or oversized frames.
+- HR notifications arrive in bursts with multi-second gaps during a WHOOP historical sync.
+- `didDiscover` for HR monitor is logged only after a WHOOP historical sync command completes.
+- Instruments shows both CBCentralManager delegates competing on the same queue.
 
-**Phase to address:** WEAR-01 (second wearable BLE pipeline) — must define the `WearableKind` extension point before writing any notification handling code.
+**Phase to address:** WEAR-02 (HR scan UI and independent capture) — create the dedicated HR monitor queue when wiring up `startHRMonitorScan()`.
 
 ---
 
-### Pitfall 2: Gen4 device classification at scan time vs connect time — the race condition
+### Pitfall 2: `discoveredHRDevices` and `hrConnectionState` are plain `var` properties on a non-`@Published`, non-`@MainActor` class — UI reads them from the wrong thread
 
 **What goes wrong:**
-The current `whoopIdentityEvidence` function accepts a peripheral as a WHOOP candidate if it advertises a service UUID in `whoopServices` (which already contains both `fd4b0001-...` for Gen5 and `61080001-...` for Gen4), or if its name contains "whoop". Device generation (Gen4 vs Gen5) is not classified at scan/connect time — it is derived per-notification from `characteristicUUID`. This means `GooseBLEClient` has no `connectedDeviceGeneration` property. The iOS layer does not know it has a Gen4 until the first notification arrives.
-
-The race condition: `sendClientHello` is called in `processDiscoveredCharacteristics` as soon as the command characteristic is found. The Gen4 and Gen5 HELLO commands have the same framing (`buildV5CommandFrame`), so this part is safe. But `supportsV5HistoricalSync`, `supportsV5AlarmCommands`, and `supportsV5ClockCommands` are all computed from `isV5CommandCharacteristic` which checks for the `fd4b0002-...` prefix. A Gen4 device uses `61080002-...` for its command characteristic, so `isV5CommandCharacteristic` returns `false` — and all those capabilities are reported as unsupported before any data has flowed.
+`GooseBLEHRMonitorManager` is a plain `NSObject` subclass with `var discoveredHRDevices: [GooseDiscoveredDevice] = []` and `var hrConnectionState: String = "disconnected"`. These are mutated on the CoreBluetooth queue (inside delegate callbacks) and read from SwiftUI views (on the main thread) via `ble.hrMonitorManager.discoveredHRDevices`. There is no synchronisation. The current code does send `objectWillChange.send()` from `DispatchQueue.main.async`, which causes the view to re-render — but the actual array read happens on the main thread immediately after, while the CoreBluetooth queue may simultaneously be mutating it (e.g., `discoveredHRDevices.sort`). This is a data race.
 
 **Why it happens:**
-The naming "V5" in `supportsV5HistoricalSync` is misleading — it really means "fd4b prefix" which is the Gen5 UUID family. Gen4 uses the `61080` prefix family. The existing code was written for Gen5 only, so Gen4 was never expected to reach the `canSyncHistorical` guard. Adding Gen4 to the scan without updating these guards means Gen4 historical sync is silently disabled the moment the device connects.
+`GooseBLEHRMonitorManager` was written as a helper object that forwards to `owner?.objectWillChange.send()`. The `@Published` wrapper is on `GooseBLEClient`, not on the manager. Developers assume that because `objectWillChange.send()` is dispatched to main, the data is safe to read on main — but the array mutation happens on the BT queue before the `DispatchQueue.main.async` block fires; the read may race with a subsequent mutation on the BT queue if two scan results arrive close together.
 
-**Consequences:**
-Historical sync UI shows "disabled" for Gen4 devices even when the hardware supports it. Clock sync, alarm writes, and sensor commands are blocked for Gen4. If historical sync is triggered manually and the guard is bypassed, the command is written using the wrong characteristic (wrong UUID), and the strap ignores it.
-
-**Prevention:**
-At `processDiscoveredCharacteristics` time, resolve and store the connected device generation (Gen4 when `61080002-...` is the command characteristic; Gen5 when `fd4b0002-...` is found). Store this as a `connectedDeviceKind: ConnectedDeviceKind` property on `GooseBLEClient`. Rewrite `supportsV5HistoricalSync` etc. to check `connectedDeviceKind` rather than checking `commandCharacteristic.uuid` prefix. Rename these computed vars to `supportsHistoricalSync` to eliminate the "V5" misnomer.
+**How to avoid:**
+Either: (a) make `GooseBLEHRMonitorManager` publish its state through `@Published` properties on `GooseBLEClient` proper (array mutations happen on BT queue, then a `DispatchQueue.main.async` block copies the snapshot to `@Published` properties owned by `GooseBLEClient`), or (b) protect the array with an `NSLock` (consistent with how `notificationContextLock` is used elsewhere in the codebase). Option (a) is architecturally cleaner and matches the existing `liveHeartRateBPM` pattern.
 
 **Warning signs:**
-- Gen4 connects but `canSyncHistorical` is false in the UI.
-- Logs show `"historical_sync.auto_skipped"` immediately after Gen4 connection despite `autoHistoricalSyncOnReady = true`.
-- `commandCharacteristic.uuid.uuidString` in the alarm write support summary shows `61080002-...` but `supportsV5AlarmCommands` is false.
+- SwiftUI list of discovered HR devices occasionally shows duplicates or missing entries that resolve on the next scroll.
+- Thread Sanitiser reports a data race on `discoveredHRDevices` during a heavy scan session.
+- `discoveredHRDevices` is accessed directly in a SwiftUI `ForEach` via `ble.hrMonitorManager.discoveredHRDevices`.
 
-**Phase to address:** GEN4-01 (Gen4 BLE iOS layer) — the very first step must be resolving and storing device generation, not just adding the UUID to the scan filter.
+**Phase to address:** WEAR-02 — introduce the synchronisation pattern before wiring the scan UI to avoid shipping a latent race.
 
 ---
 
-### Pitfall 3: `scanForPeripherals(withServices:)` with both WHOOP service UUIDs does not require two separate scans
+### Pitfall 3: `startHRMonitorScan()` has no caller and `GooseBLEHRMonitorManager.central` starts as `nil` — calling `startScan()` before `start(queue:)` is a silent no-op
 
 **What goes wrong:**
-The assumption that "adding Gen4 scan support" means "call `scanForPeripherals` twice" is wrong and harmful. `CBCentralManager.scanForPeripherals(withServices:)` accepts an array — passing both `fd4b0001-...` and `61080001-...` in a single array causes CoreBluetooth to report any peripheral advertising either UUID. Calling `scanForPeripherals` a second time while a scan is already active silently restarts the scan with only the new parameters, dropping the first UUID from the filter. Any in-flight discovery of the first UUID is aborted.
+`GooseBLEHRMonitorManager.startScan()` calls `central?.scanForPeripherals(...)`. If `central` is `nil` (i.e., `start(queue:)` has not been called yet), this is a silent no-op — no error, no log, no scan. The `start(queue:)` guard (`guard central == nil else { return }`) means `start` is idempotent, but calling `startScan()` before `start()` simply does nothing. A UI button that calls `startHRMonitorScan()` → `hrMonitorManager.startScan()` would appear to work (no crash) but produce zero discovered devices.
 
 **Why it happens:**
-The current `whoopServices` array already contains both UUIDs: `fd4b0001-...` and `61080001-...`. Developers working on Gen4 support who do not read `GooseBLEClient.swift` carefully may assume only one UUID is scanned for (because the existing code was only tested with Gen5 hardware) and try to add a second `scanForPeripherals` call.
+`start(queue:)` initialises the `CBCentralManager`, which triggers `centralManagerDidUpdateState`. The manager is only ready to scan after `.poweredOn` is received — which is asynchronous. The current implementation in `GooseBLEClient.startHRMonitorScan()` calls `start(queue:)` and `startScan()` in sequence, but `startScan()` fires before `centralManagerDidUpdateState(.poweredOn)` is received. On first launch this always produces a silent no-op scan.
 
-**Consequences:**
-The second `scanForPeripherals` call drops the first UUID filter. If Gen5 is discovered mid-scan, its discovery event is lost. The scan runs with only the Gen4 UUID, so Gen5 devices are invisible until the next scan cycle. This is not logged as an error — CoreBluetooth silently accepts the new parameters.
-
-**Prevention:**
-The scan call at line ~134 of `GooseBLEClient+UserActions.swift` already passes `whoopServices` (both UUIDs). Gen4 scan support requires only verifying that `61080001-...` is in `whoopServices` — which it already is. The actual work for Gen4 is in classification at connect time, not scan time. Document this explicitly to prevent future confusion.
+**How to avoid:**
+Implement the standard CoreBluetooth pattern: call `scanForPeripherals` only inside `centralManagerDidUpdateState` when `central.state == .poweredOn`, using a stored `pendingScan: Bool` flag set by `startScan()`. This is already done for the WHOOP manager via `startupReconnectAttempted`. Apply the identical pattern to `GooseBLEHRMonitorManager`.
 
 **Warning signs:**
-- `startScan` is called more than once in sequence without `stopScan` between them.
-- Second call to `scanForPeripherals` appears anywhere in the codebase.
-- Logs show `"scan.started"` twice without an intervening `"scan.stopped"`.
+- `startHRMonitorScan()` is called and returns without error but no devices appear in the list.
+- No `"scan.start"` CoreBluetooth system log entry appears in Console.app for the HR manager.
+- `hrMonitorManager.central?.isScanning` is `false` immediately after `startHRMonitorScan()`.
 
-**Phase to address:** GEN4-01 — verify at the outset that no second scan call is added; the scan filter is already correct.
+**Phase to address:** WEAR-02 — the very first thing to implement before any UI is the `centralManagerDidUpdateState` → scan flow.
 
 ---
 
-### Pitfall 4: Background scan filter stops matching in the background without `CBCentralManagerOptionRestoreIdentifierKey`
+### Pitfall 4: HR monitor frames currently gated on `onNotification` which is only wired during WHOOP capture — independent HR capture requires a separate write path
 
 **What goes wrong:**
-When iOS suspends the app during a BLE scan (e.g., user puts phone down during overnight data capture), CoreBluetooth's background execution mode (`bluetooth-central` in `UIBackgroundModes`) allows scanning to continue — but only for peripherals advertising service UUIDs that were declared in `scanForPeripherals(withServices:)`. Adding a second wearable whose primary service UUID is not in the `withServices` array means that device is invisible in the background, even if its BLE advertisement is active.
-
-The deeper pitfall: adding a third-party wearable (Polar OH1, Amazfit, etc.) whose primary service UUID is unknown or unpublished means the `withServices` array cannot be populated correctly, and background scanning for that device is impossible without the `nil` (all peripherals) option — which iOS does not permit in the background.
+In `GooseBLEHRMonitorManager.peripheral(_:didUpdateValueFor:)`, the HR notification is delivered via `owner?.onNotification?(event)`. The `onNotification` closure on `GooseBLEClient` is set in `GooseAppModel+NotificationPipeline.swift` and feeds into `CaptureFrameWriteQueue`, which requires an active `capture_session_id`. If a WHOOP session is not active, `captureSessionID` on `CaptureFrameWriteQueue` is `nil`, and frames are not persisted. The HR monitor cannot independently persist data.
 
 **Why it happens:**
-Developers test on-screen with the app in the foreground, where `withServices: nil` and `CBCentralManagerScanOptionAllowDuplicatesKey: false` both work. Background execution applies stricter rules that are not enforced during foreground testing.
+The HR monitor was wired into the existing `onNotification` pipeline in v2.0 as the fastest path to get E2E data flow working. The `CaptureFrameWriteQueue` was designed for WHOOP capture sessions, not for a continuously-running HR monitor that operates independently of WHOOP.
 
-**Consequences:**
-The second wearable is only discoverable while the app is in the foreground. Overnight/background capture silently captures zero data from the new device. This manifests as "works in testing, fails in production overnight runs."
-
-**Prevention:**
-- Know the primary GATT service UUID of every target wearable before starting implementation. Background scanning requires this UUID.
-- Add the new wearable's primary service UUID to `whoopServices` (or a renamed `knownWearableServices` array).
-- Verify background scanning behavior explicitly: lock the screen, wait 30 seconds, confirm the device is discovered in the log.
-- If the second wearable does not advertise a stable service UUID, background capture is not possible — document this as a constraint.
+**How to avoid:**
+Introduce a separate `CaptureFrameWriteQueue` instance (or a lighter `HRFrameWriteQueue`) for the HR monitor that uses a permanent session identifier (not gated on user-initiated capture). Alternatively, give `GooseBLEHRMonitorManager` its own `onHRNotification` closure distinct from `onNotification`, and route it to a standalone SQLite write path in Rust. The HR monitor's 0x2A37 frames are structurally simpler (already parsed by `heart_rate_gatt_protocol.rs`) and do not need the full WHOOP frame reassembly pipeline.
 
 **Warning signs:**
-- Second wearable discovered in foreground tests but not in overnight BLE log.
-- No `"device.discovered"` log entry for the second wearable after screen-lock.
-- `whoopServices` array does not contain the second wearable's primary service UUID.
+- HR monitor shows live heart rate (via `handleStandardHeartRate`) but no frames appear in `decoded_frames` after disconnecting WHOOP.
+- `captureSessionID` is `nil` when the HR monitor is active but no WHOOP session is running.
+- HR data disappears from the server after a WHOOP session ends even though the HR monitor remains connected.
 
-**Phase to address:** WEAR-01 — before any code, confirm the target wearable's service UUID and its background scan behavior.
+**Phase to address:** WEAR-02 — define the independent write path before implementing the capture session decoupling.
 
 ---
 
-### Pitfall 5: `panic = "abort"` in the release profile is incompatible with JNI on Android
+### Pitfall 5: CR-02 device_id filter — the namespace mismatch that caused the v2.0 revert
 
 **What goes wrong:**
-`Cargo.toml` declares `panic = "abort"` in `[profile.release]`. On iOS this is correct — panicking in Rust and unwinding through the Swift FFI boundary is undefined behavior, so aborting is the right choice. On Android, however, the JNI bridge runs Rust inside a JVM process. A Rust `panic = "abort"` causes the entire JVM process to receive `SIGABRT` and die instantly — there is no chance for the JVM to handle the exception, log it, or surface it to the Kotlin/Java layer. This also means the Android app cannot recover from any Rust error.
+In `upload_get_recent_decoded_streams_bridge`, the `device_id` argument passed from Swift is `ble.activeDeviceIdentifier?.uuidString` — a CoreBluetooth `peripheral.identifier` UUID (e.g., `"A1B2C3D4-..."`). The `decoded_frames` table stores `device_model TEXT NOT NULL` (the sanitised BLE device name, e.g., `"WHOOP 5B1234"`) and `active_device_id TEXT` (also the CoreBluetooth UUID when passed). The `ble_raw_notifications` table stores `device_id TEXT` (the CoreBluetooth UUID) and `active_device_name TEXT` (the BLE device name).
+
+The mismatch: the filter tried to compare `device_id` (UUID string) against `device_model` (name string). These two fields are in different namespaces — a UUID never equals a device name. Any filter of the form `WHERE device_model = ?` with a UUID argument returns zero rows. The v2.0 revert replaced the filter with the time-window-only approach (`since_ts`).
 
 **Why it happens:**
-The `panic = "abort"` setting was added for iOS and is appropriate there. Cross-compilation to Android reuses the same `Cargo.toml` and the same `[profile.release]`, so the setting applies to the Android target as well.
+The schema evolved over multiple phases. `decoded_frames` was designed with `device_model` (name-based identity) while the upload bridge was designed with `device_id` (UUID-based identity). No single place in the codebase maps UUID → device name at storage time for `decoded_frames`. The upload query cannot join the two without a schema normalisation step.
 
-**Consequences:**
-Any unhandled Rust error (including rusqlite errors if the SQLite file is corrupted or the path is wrong) causes the entire Android process to die with SIGABRT. On Android, unlike iOS, this is fully visible to users as an app crash — not just a silent failure. The crash cannot be caught or reported.
-
-**Prevention:**
-Use a `[profile.release-android]` custom profile or a `[target.aarch64-linux-android]` override that sets `panic = "unwind"`. Alternatively, ensure all Rust functions exposed via JNI return `Result` types that are never unwrapped without an `or_else` — `std::panic::catch_unwind` at the JNI boundary is the correct pattern, returning a Java exception instead of aborting.
+**How to avoid:**
+Fix at the schema level, not the query level. Option A: add `active_device_id TEXT` to `decoded_frames` (store the CoreBluetooth UUID alongside `device_model`) as a migration, then filter `WHERE active_device_id = ?`. Option B: pass `device_model` (the name) from Swift to the upload bridge and filter by name. Option A is more robust because names are not stable (user can rename a Bluetooth device). The migration must include a `CREATE INDEX IF NOT EXISTS decoded_frames_device_id ON decoded_frames(active_device_id)` to keep the filter performant.
 
 **Warning signs:**
-- Android app silently dies with no Java stack trace; only a native `SIGABRT` in logcat.
-- `panic = "abort"` applies to the `aarch64-linux-android` target profile.
-- JNI bridge functions use `.unwrap()` or `.expect()` on `Result` types.
+- `upload_get_recent_decoded_streams_bridge` returns frames for all devices even when `device_id` is set.
+- `SELECT COUNT(*) FROM decoded_frames WHERE device_model = 'A1B2C3D4-...'` returns zero.
+- The filter was re-implemented without a schema migration step.
 
-**Phase to address:** ANDROID-01 (Rust JNI-ready compilation) — the profile and unwrap discipline must be established before any JNI bridge function is written.
+**Phase to address:** CR-02 — before writing any filter logic, define which column carries the UUID and add the migration.
 
 ---
 
-### Pitfall 6: `rusqlite` with `bundled` feature cross-compiles to Android but requires the correct `cc` toolchain and NDK linker
+### Pitfall 6: Recovery V2 bridge queries are synchronous and called from `@MainActor` — blocks the main thread
 
 **What goes wrong:**
-`rusqlite = { version = "0.37", features = ["bundled"] }` compiles SQLite from source via the `cc` crate. On the iOS build, this works because `build_ios_rust.sh` sets `CARGO_TARGET_AARCH64_APPLE_IOS_LINKER` to the Xcode `clang` binary. For Android, the equivalent linker path must be set for `aarch64-linux-android`. If it is not set, Cargo uses the host `cc` (macOS clang), which produces iOS/macOS binaries instead of Android ELF shared objects. The error message is a linker error (`ld: warning: ignoring file ...wrong architecture`) that looks like a build failure but is actually a configuration problem.
-
-The secondary issue: the NDK provides `aarch64-linux-android21-clang` (or the version-specific variant); the correct executable path depends on the NDK version installed and the minimum API level. NDK r23+ changed the toolchain layout, dropping the `aarch64-linux-android-clang` without version suffix that was standard in older tutorials.
+`HealthDataStore` is `@MainActor`. The existing `refreshBridgeCatalogs()` and `runPacketInputs()` correctly dispatch to `packetInputQueue` before calling `bridge.requestValue(...)`. However, a naive Recovery V2 implementation that adds new metric queries directly inside a `@MainActor` function (e.g., inside a view's `.onAppear` or inside a `@MainActor func refresh()`) calls the synchronous Rust bridge on the main thread. The bridge documentation in `CLAUDE.md` explicitly states: "Never call from `@MainActor` with expensive methods; always dispatch to a background queue first." A metric aggregation over 30 days of `decoded_frames` can take 200–500 ms.
 
 **Why it happens:**
-Cross-compilation for Android requires setting environment variables that parallel what `build_ios_rust.sh` does for iOS, but for the Android toolchain. There is no existing Android build script in this repo — it must be created from scratch. The `bundled` SQLite feature is the right choice (avoids depending on the Android system SQLite), but it requires the C compiler chain to be fully resolved.
+The `HealthDataStore.bridge` property is accessible from any `@MainActor` context. There is no compile-time enforcement preventing a `@MainActor` function from calling `bridge.request(...)` directly. The correct dispatch pattern (background queue → main async for state mutation) is established in existing extensions but not enforced architecturally.
 
-**Consequences:**
-Without explicit NDK linker configuration, `cargo build --target aarch64-linux-android` fails with a cryptic linker error. This blocks the entire ANDROID-01 milestone.
-
-**Prevention:**
-Create a `.cargo/config.toml` in `Rust/core/` (or a project-root config) that sets:
-```toml
-[target.aarch64-linux-android]
-linker = "/path/to/NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang"
-ar = "/path/to/NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
-```
-Set `ANDROID_NDK_HOME` as an env var and derive the linker path from it in a build script rather than hardcoding an absolute path. Use NDK r25 or later (stable ABI). Pin the NDK version in the ADR.
+**How to avoid:**
+Every new bridge query in Recovery V2 must follow the established pattern: (1) capture `let bridge = self.bridge` and `let databasePath = self.databasePath` on `@MainActor`, (2) `packetInputQueue.async { let result = bridge.request(...) ... DispatchQueue.main.async { self.recoveryV2State = result } }`. Never call `bridge.request(...)` directly inside a `Task { @MainActor in ... }` block.
 
 **Warning signs:**
-- `cargo build --target aarch64-linux-android` produces `ld: warning: ignoring file ... for architecture arm64e`.
-- `cc` is not set in `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER`.
-- Build fails with `error: linker 'cc' not found` or `error: linking with 'aarch64-linux-android-gcc' failed`.
+- Adding `try bridge.request(method: "metrics.recovery_v2_*", args: ...)` directly inside a `@MainActor func` without a background queue dispatch.
+- UI freezes for 200+ ms when navigating to the Recovery V2 dashboard.
+- Instruments shows the main thread blocked in `goose_bridge_handle_json` during dashboard load.
 
-**Phase to address:** ANDROID-01 — the linker configuration is the very first blocking issue to resolve.
+**Phase to address:** Recovery V2 dashboard phase — enforce the background-dispatch rule as a phase acceptance criterion, not an afterthought.
+
+---
+
+### Pitfall 7: pt-PT localisation — zero existing infrastructure, 310 hardcoded string literals in SwiftUI views
+
+**What goes wrong:**
+The app has no localisation infrastructure: no `.xcstrings` file, no `.lproj` directories, zero `NSLocalizedString` / `String(localized:)` calls. All 310+ `Text("...")`, `Label("...", ...)`, and `Button("...")` literals are raw English strings. SwiftUI's `Text("Literal string")` initialiser uses `LocalizedStringKey` by default — which means SwiftUI will attempt to look up the literal in a string catalog when one exists. Without a string catalog, SwiftUI renders the raw literal. Adding a string catalog later is safe (fallback = raw literal), but the scale is large: extracting 310+ strings from 80 SwiftUI files is significant mechanical work.
+
+The specific pitfall: Xcode's "Export Localizations" and String Catalog migration tool generates a `.xcstrings` file from the project, but it does not handle strings that are constructed programmatically (e.g., `"Score: \(score)"` or `ble.connectionState`). Those require manual `String(localized:)` wrapping. Status strings like `"disconnected"`, `"connecting"`, `"reconnecting after disconnect"` are set in Swift code (not in SwiftUI `Text`), so they are not auto-extracted. If these status strings remain untranslated, the UI will show English status text alongside Portuguese UI labels — a jarring mixed-language experience.
+
+**Why it happens:**
+The app was built for a single-user personal use case. Localisation was never a goal. The `@Published` string properties (`connectionState`, `reconnectState`, `strapClockStatus`, etc.) are set via raw English literals scattered across 15+ files and fed directly to SwiftUI views via `LabeledContent("...", value: ble.connectionState)`. These do not go through `LocalizedStringKey`.
+
+**How to avoid:**
+Phase the migration: (1) Create the `.xcstrings` file and run Xcode's String Catalog extraction to cover all static `Text("...")` literals automatically. (2) Separately, audit all `@Published var` string properties that are displayed in views and convert them to localisation-safe patterns — either enum-based status (with a `localizedDescription` computed property) or explicit `String(localized: "...", bundle: .main)` at the assignment site. Do not attempt to do both in the same phase — the static literal extraction is mechanical and safe; the dynamic string conversion is architectural and risky.
+
+**Warning signs:**
+- Xcode shows a new `.xcstrings` file in the project but status labels (`connectionState`, `historicalSyncStatus`, etc.) still show English text in the pt-PT UI.
+- `LabeledContent("Reconnect", value: ble.reconnectState)` with `reconnectState = "reconnecting after disconnect"` — the label is translated but the value is not.
+- `Text(ble.catalogStatus)` is not in the String Catalog because it is not a literal.
+
+**Phase to address:** pt-PT localisation phase — split into two sub-phases: static catalog extraction first, dynamic string conversion second.
+
+---
+
+### Pitfall 8: WHOOP 4.0 RTC sync — writing the SET_TIME command before the command characteristic is confirmed as writable causes a silent failure
+
+**What goes wrong:**
+`writeClockCommand(_:syncIfNeeded:)` has six guards before writing: `!isHistoricalSyncing`, `pendingClockCommand == nil`, `pendingAlarmCommand == nil`, `activePeripheral != nil && commandCharacteristic != nil`, `connectionState == "ready"`, and `supportsClockCommands`. The `connectionState == "ready"` guard is the critical one: it transitions from `"discovering"` only after `processDiscoveredCharacteristics` runs and finds the command characteristic. If the auto-sync logic attempts RTC sync immediately after `didConnect` (but before `discoverServices` → `discoverCharacteristics` completes), all six guards are evaluated with `commandCharacteristic == nil` and the command is silently discarded with `failClockCommand(...)`. No retry is scheduled.
+
+**Why it happens:**
+WHOOP 4.0 RTC sync is triggered by comparing the strap clock reading against wall time. The read itself (`ClockCommandKind.get`) is sent after `connectionState == "ready"`. But developers implementing the auto-sync feature (send a SET_TIME immediately after connect if the clock is drifted) may trigger the SET_TIME before the read completes, or schedule it in `centralManager(_:didConnect:)` before the GATT discovery cycle finishes.
+
+**How to avoid:**
+Always sequence RTC sync as: (1) wait for `connectionState == "ready"`, (2) send GET clock command, (3) in `HistoricalHandlers.handleClockResponse`, if `abs(offset) > threshold`, send SET clock command. Never send SET_TIME directly from the `didConnect` callback. The existing `writeClockCommand` guard on `connectionState == "ready"` is correct — the risk is bypassing it by using a DispatchWorkItem scheduled from `didConnect` with a fixed delay (e.g., `asyncAfter(deadline: .now() + 2.0)`) that may or may not clear the GATT discovery window.
+
+**Warning signs:**
+- `strapClockStatus = "Clock command needs active WHOOP command characteristic."` logged during the GATT discovery window.
+- SET_TIME is sent from `centralManager(_:didConnect:)` or `centralManagerDidUpdateState` instead of from `handleClockResponse`.
+- `asyncAfter` used to work around GATT timing instead of waiting for `connectionState == "ready"`.
+
+**Phase to address:** WHOOP 4.0 RTC sync phase — define the sequencing contract (GET → response → SET if needed) in the phase plan before writing code.
+
+---
+
+### Pitfall 9: BLE reconnect backoff — `DispatchWorkItem` cancel race when a new connection arrives before the backoff timer fires
+
+**What goes wrong:**
+The reconnect backoff will schedule a `DispatchWorkItem` on `coreBluetoothQueue` after a failed connection attempt. The pattern exists elsewhere in the codebase (`historicalCommandTimeoutWorkItem`, `clockCommandTimeoutWorkItem`) but with a bug-prone pattern: if `connect(peripheral:reason:)` is called manually by the user while a backoff timer is pending, the timer is not cancelled before the manual connection proceeds. When the timer fires, it calls `connect(...)` a second time on a peripheral that is already in the `.connecting` state. CoreBluetooth silently ignores the duplicate `connect` call, but `autoReconnectInFlight` is set to `true` a second time, and `pendingConnectionReason` is overwritten.
+
+For the HR monitor delegate, the pitfall is more severe: `GooseBLEHRMonitorManager` has no backoff state, no `reconnectWorkItem` property, and no `NSLock` protecting concurrent access from the two BT queues (WHOOP and HR). Adding backoff to the HR monitor without proper cancellation means a stale backoff timer from the HR manager fires on the HR BT queue while the WHOOP manager's disconnect handler is running on the WHOOP BT queue — these can concurrently mutate shared state on `GooseBLEClient` (e.g., `hrConnectionState`, `owner` reference).
+
+**Why it happens:**
+The existing reconnect code in `GooseBLEClient+CentralDelegate.swift` calls `connect(peripheral, reason: reconnectReason)` directly in `centralManager(_:didDisconnectPeripheral:)` without a delay. Backoff requires a delay — and delays require `DispatchWorkItem` management. The cancellation contract is easy to get wrong: the workItem must be cancelled (a) in `centralManager(_:didConnect:)`, (b) in `stopScan`, and (c) when the user manually disconnects. Missing any of these produces a spurious reconnect attempt after the condition was already resolved.
+
+**How to avoid:**
+Follow the existing `clockCommandTimeoutWorkItem` pattern exactly: store the workItem as a `var reconnectBackoffWorkItem: DispatchWorkItem?` on the relevant manager, cancel it at every state transition that resolves the disconnect, and use `[weak self]` in the workItem closure. For the HR monitor, the backoff workItem must be stored on `GooseBLEHRMonitorManager` (not on `GooseBLEClient`) to avoid cross-queue state access. Apply backoff to both managers independently — do not share state between them.
+
+**Warning signs:**
+- Two `"reconnect.requested"` log entries within milliseconds of each other after a manual user reconnect.
+- `autoReconnectInFlight` is `true` after a successful connection (should be reset to `false` in `didConnect`).
+- HR monitor reconnect fires after the user has already manually disconnected.
+
+**Phase to address:** BLE reconnect backoff phase — implement WHOOP backoff first, then apply the same pattern to the HR monitor as a separate step.
+
+---
+
+### Pitfall 10: `GooseBLEHRMonitorManager` uses `owner?.objectWillChange.send()` but `hrMonitorManager` is not `@Published` on `GooseBLEClient` — SwiftUI does not observe it
+
+**What goes wrong:**
+`GooseBLEClient` is `ObservableObject`. `hrMonitorManager` is a plain `let` constant (not `@Published`). SwiftUI views that access `ble.hrMonitorManager.discoveredHRDevices` do not receive automatic invalidation when `discoveredHRDevices` changes — only when `objectWillChange.send()` fires on `GooseBLEClient`. The current code manually calls `owner?.objectWillChange.send()` from `DispatchQueue.main.async` to work around this. This is fragile: if `owner` is `nil` at the time the async block fires (e.g., `GooseBLEClient` was deallocated), the update is silently dropped. More importantly, any new state on `GooseBLEHRMonitorManager` (e.g., `hrConnectionState` changing from `"connected"` to `"disconnected"`) that is not manually accompanied by `objectWillChange.send()` will not update the UI.
+
+**Why it happens:**
+The manual `objectWillChange.send()` pattern was used to avoid refactoring `GooseBLEClient`. It works for the `discoveredHRDevices` list (which always fires the send) but is fragile for other state properties where a developer may mutate the property and forget the `owner?.objectWillChange.send()` call.
+
+**How to avoid:**
+Promote all HR monitor state that the UI needs to `@Published` properties on `GooseBLEClient` directly: `@Published var discoveredHRDevices: [GooseDiscoveredDevice] = []`, `@Published var hrConnectionState = "disconnected"`. Mutations happen on the BT queue, but assignments to `@Published` properties must be dispatched to `DispatchQueue.main.async`. Remove the manual `objectWillChange.send()` call from `GooseBLEHRMonitorManager`. This is the correct pattern already used for `liveHeartRateBPM` and `connectionState`.
+
+**Warning signs:**
+- HR device list updates in the SwiftUI view only when navigating away and back, not in real time during scan.
+- `hrConnectionState == "connected"` but the UI still shows "disconnected" until the user taps a button.
+- A new `@Published` property is added to `GooseBLEHRMonitorManager` without a corresponding `objectWillChange.send()`.
+
+**Phase to address:** WEAR-02 — refactor observation model before wiring scan UI to avoid shipping broken reactivity.
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that require significant rework but not data loss or rewrites.
+---
+
+### Pitfall 11: `CBCentralManagerOptionRestoreIdentifierKey` for the HR monitor will trigger `willRestoreState` on launch — handler is currently a no-op stub
+
+**What goes wrong:**
+`GooseBLEHRMonitorManager.start(queue:)` sets `CBCentralManagerOptionRestoreIdentifierKey: "com.goose.swift.hr-monitor"`. This opts the HR manager into CoreBluetooth state restoration. On next app launch (e.g., after a crash or background termination), CoreBluetooth will call `centralManager(_:willRestoreState:)` on `GooseBLEHRMonitorManager` with a dictionary containing the previously connected HR peripheral. The current implementation of `willRestoreState` is a stub: `// State restoration not required for manual-only HR monitor connections`. This comment is incorrect if the HR monitor is running an independent capture session that should survive app restart. If state restoration is ignored, the restored peripheral is leaked — it remains in CoreBluetooth's connection pool as a zombie peripheral that the app does not manage, and reconnecting to the same HR monitor on the next manual scan may fail with "already connected".
+
+**Why it happens:**
+The `CBCentralManagerOptionRestoreIdentifierKey` was added to follow the WHOOP manager pattern, but its implications (state restoration at launch) were not addressed. The stub comment implies a deliberate decision, but the consequences of ignoring restoration for an independent capture session were not considered.
+
+**How to avoid:**
+Either (a) remove `CBCentralManagerOptionRestoreIdentifierKey` from the HR manager (simpler — HR monitor is manual-connect, not background-kept), or (b) implement `willRestoreState` properly by inspecting the restored peripheral and reconnecting if it matches the last-connected HR device. Option (a) is correct if the HR monitor is always manually initiated.
+
+**Warning signs:**
+- After app restart, `centralManager.retrieveConnectedPeripherals(withServices: [CBUUID("180D")])` returns the previous HR device as already connected, but no `didConnect` callback fires.
+- "Already connected" error when attempting `central.connect(peripheral)` for the HR monitor peripheral after launch.
+
+**Phase to address:** WEAR-02 — decide restoration policy before release; removing the key is the safe default.
 
 ---
 
-### Pitfall 7: JNI string handling — UTF-8 vs Modified UTF-8 mismatch
+### Pitfall 12: CR-02 schema migration — adding `active_device_id` to `decoded_frames` must use `ALTER TABLE` not re-creation, or existing data is lost
 
 **What goes wrong:**
-JNI's `GetStringUTFChars` / `NewStringUTF` use Modified UTF-8 (MUTF-8), not standard UTF-8. The primary difference: null bytes (`\0`) are encoded as the two-byte sequence `0xC0 0x80` in MUTF-8, and supplementary Unicode characters (above U+FFFF) are encoded as surrogate pairs rather than as 4-byte UTF-8 sequences. Rust strings are always standard UTF-8. If the Rust bridge sends a JSON string containing a null byte (e.g., in a hex-encoded BLE frame) or a 4-byte Unicode sequence via `NewStringUTF`, the JVM may crash with `JNI DETECTED ERROR IN APPLICATION: input is not valid Modified UTF-8`.
+`decoded_frames` already contains captures from v1.0, v2.0, and early v3.0. Any schema migration that uses `DROP TABLE + CREATE TABLE` to add `active_device_id TEXT` destroys all existing frames. SQLite's `ALTER TABLE ... ADD COLUMN` is the correct migration path. However, `open_bridge_store` runs schema initialisation every time the bridge is opened, using `CREATE TABLE IF NOT EXISTS` — which is idempotent for existing tables but does not add new columns. The migration must explicitly detect the missing column and run `ALTER TABLE decoded_frames ADD COLUMN active_device_id TEXT` before the bridge proceeds.
 
 **Why it happens:**
-The existing Rust bridge uses JSON over a C FFI call (`goose_bridge_handle_json`). Translating this to JNI requires encoding the JSON as a Java String and passing it to a JNI native method. Developers familiar with `CString` in Rust + C FFI assume UTF-8 equivalence and use `env.new_string(json_str)` directly in the `jni` crate without validating for null bytes.
+The Rust store initialisation uses `CREATE TABLE IF NOT EXISTS` for all tables (correct). But `IF NOT EXISTS` means column additions are silently skipped if the table already exists. There is no column existence check in the current `open_bridge_store` path.
 
-**Consequences:**
-Any BLE frame hex string containing `\0` in its payload (valid in binary BLE data) causes a JVM crash when the response is returned via JNI. This does not happen in iOS (C FFI passes raw bytes; Swift handles the null termination). The bug is hard to reproduce because it requires specific BLE packet content.
-
-**Prevention:**
-- At the JNI boundary, use the `jni` crate's `env.new_string()` only for well-validated strings that cannot contain null bytes or surrogate pairs.
-- For binary or JSON payloads, prefer `jbyteArray` over `jstring` — pass bytes from Rust to Java as `byte[]`, then decode in Java/Kotlin as UTF-8.
-- If `jstring` must be used, replace null bytes (`\0`) with a safe placeholder (e.g., space or Unicode replacement character) before calling `env.new_string()`.
+**How to avoid:**
+Add a Rust migration step (before the existing `CREATE TABLE IF NOT EXISTS` block) that checks `PRAGMA table_info(decoded_frames)` and runs `ALTER TABLE decoded_frames ADD COLUMN active_device_id TEXT` if the column is absent. Then build an index on the new column. Test this migration against a real database from v2.0 (copy `goose.sqlite` from the device, apply migration, verify row count unchanged).
 
 **Warning signs:**
-- `JNI DETECTED ERROR IN APPLICATION: input is not valid Modified UTF-8` in Android logcat.
-- Bridge payloads that include hex-encoded BLE frames (which can legitimately contain `0x00` bytes).
-- Use of `env.new_string(result)` without prior validation of the string content.
+- `decoded_frames` row count drops to zero after deploying the CR-02 fix.
+- `open_bridge_store` does not include a `PRAGMA table_info` check for the new column.
+- The migration is applied as a new `CREATE TABLE` statement rather than `ALTER TABLE`.
 
-**Phase to address:** ANDROID-02 (JNI bridge wrapper) — the string encoding policy must be defined before any bridge function is implemented.
+**Phase to address:** CR-02 — the migration test (v2.0 database → v3.0 schema) must be a phase entry criterion, not an exit criterion.
 
 ---
 
-### Pitfall 8: Calling the synchronous Rust bridge from the Android main thread (analogous to the iOS @MainActor rule)
+### Pitfall 13: Recovery V2 bridge methods called with a stale `databasePath` when the SQLite file has moved
 
 **What goes wrong:**
-The existing Rust bridge (`goose_bridge_handle_json`) is synchronous and can block for significant time on database operations (SQLite writes, metric computations). On iOS, the architectural constraint is documented: "Never call from `@MainActor` with expensive methods; always dispatch to a background queue first." The JNI equivalent: calling a native method that blocks on the Android main thread (UI thread) triggers an `ANR` (Application Not Responding) dialog after 5 seconds and may kill the process.
+`HealthDataStore.databasePath` is a `lazy var` — it is computed once on first access and cached. If the app is first launched in a state where the `ApplicationSupport/GooseSwift/` directory does not yet exist (e.g., a fresh install), `defaultDatabasePath()` creates the directory and returns the path. If the directory is later moved or the app is restored from a backup to a different container, `lazy var databasePath` still holds the old path. All new bridge calls use the old path, which no longer exists, and the Rust bridge returns `"database not found"` errors.
 
 **Why it happens:**
-The simplest JNI wrapper calls the native function directly from a Kotlin coroutine or from a button handler — both of which may run on the main thread unless explicitly dispatched to `Dispatchers.IO`. Android developers accustomed to Room's auto-off-main-thread behavior may assume any database operation is automatically offloaded.
+The `lazy var` pattern is correct for avoiding repeated `FileManager` calls, but it does not handle container path changes (which happen on OS updates, iCloud Drive moves, or iTunes backup restores). The existing code is already affected by this for all bridge calls — Recovery V2 just adds more of them.
 
-**Consequences:**
-UI freezes during bridge calls. Android system detects the main thread blocked > 5 seconds and shows ANR dialog. This is a regression from the iOS behavior (which enforces background dispatch via `DispatchQueue`) and gives the Android port a reputation for being unresponsive.
-
-**Prevention:**
-- All JNI calls to the Rust bridge must be wrapped in `withContext(Dispatchers.IO)` in Kotlin.
-- Add a `ThreadLocal` check in the JNI wrapper function that asserts the call is not on the main thread (analogous to the iOS architecture rule).
-- Document the constraint in the ADR for the Android architecture.
+**How to avoid:**
+Do not add new bridge calls without verifying the `databasePath` is still valid before each call family. In `HealthDataStore.refreshBridgeCatalogs()`, `runPacketInputs()`, and any new Recovery V2 method, add a pre-flight `FileManager.default.fileExists(atPath: databasePath)` check. If the file does not exist at the cached path, reset `databasePath` (clear the `lazy var` cache by using a stored optional and re-computing it if nil).
 
 **Warning signs:**
-- `bridge.request(...)` called directly from a Composable or from a ViewModel without explicit `IO` dispatch.
-- ANR traces showing the main thread blocked in a native method.
-- StrictMode `detectAll()` reports disk reads on the main thread.
+- Bridge returns `"No such file or directory"` error after device restore from backup.
+- `lazy var databasePath` is never invalidated in any error path.
+- Recovery V2 dashboard shows "Error" immediately after a device migration.
 
-**Phase to address:** ANDROID-02 (JNI bridge wrapper) — the threading model must be the first documented decision in the ADR.
-
----
-
-### Pitfall 9: `tungstenite` (WebSocket dependency) brings in TLS dependencies that fail to compile for Android targets
-
-**What goes wrong:**
-`tungstenite = "0.28"` is used for the local debug WebSocket server (`ws://127.0.0.1:8765`). The `tungstenite` default feature set includes TLS support via `native-tls` or `rustls`. On Android, `native-tls` tries to link against OpenSSL or the platform TLS library, which is not available in the NDK toolchain without explicit configuration. `rustls` pulls in `ring`, which has its own C assembly files that require Android-specific compiler flags. Either way, the default `tungstenite` dependency causes the Android build to fail on TLS-related compilation.
-
-**Why it happens:**
-The dependency was added for iOS where the build script handles all linker setup. The Android build inherits the same `Cargo.toml` and encounters the same TLS dependency with a different (and incomplete) linker environment.
-
-**Consequences:**
-`cargo build --target aarch64-linux-android` fails with TLS-related C compilation errors before any app code is reached. The error message implicates `ring` or `openssl-sys`, not `tungstenite`, making the root cause non-obvious.
-
-**Prevention:**
-Add a `[target.aarch64-linux-android]` section to `Cargo.toml` that replaces `tungstenite` with `tungstenite` using only the non-TLS feature set (`default-features = false`), or exclude the `tungstenite` dependency entirely for Android targets using a Cargo feature flag.
-
-More practically: the debug WebSocket server is an iOS-only debugging tool. Guard it with `#[cfg(not(target_os = "android"))]` in the Rust source so Android compilation skips the entire module.
-
-**Warning signs:**
-- Android build fails with `error[E0433]: failed to resolve: use of undeclared crate or module 'ring'`.
-- `ring` or `openssl-sys` appears in the build error chain when building for `aarch64-linux-android`.
-- `cargo build --target aarch64-linux-android --features=` resolves the error — confirming it is a feature/dependency issue.
-
-**Phase to address:** ANDROID-01 — the first compilation attempt will surface this; must be resolved before any JNI code is written.
-
----
-
-### Pitfall 10: Frame reassembly buffers keyed by `frameReassemblyKey` will collide with a second wearable if both devices are connected simultaneously
-
-**What goes wrong:**
-`frameReassemblyKey(for:)` returns: `"\(deviceID)|\(serviceUUID)|\(characteristicUUID)|\(rustDeviceType)"`. This key is used to buffer partial frames in `frameReassemblyBuffers`. If two devices are connected simultaneously (both WHOOP and the second wearable), each has a distinct `deviceID` and characteristic UUID, so keys do not collide. However, `GooseBLEClient` is architecturally single-peripheral: `activePeripheral` is a single `CBPeripheral?`. The existing state machine (`connectionState = "ready"`, `commandCharacteristic`, etc.) has no concept of managing two simultaneous connections.
-
-**Why it happens:**
-The BLE client was designed for one active device at a time. Adding a second wearable implies either: (a) a second `GooseBLEClient` instance, or (b) making `GooseBLEClient` multi-peripheral. Option (b) would require significant refactoring of `connectionState`, `commandCharacteristic`, `batteryLevelCharacteristic`, and all the single-peripheral state properties. Option (a) is architecturally cleaner but means two separate pipelines.
-
-**Consequences:**
-If option (b) is attempted without refactoring, `commandCharacteristic` gets overwritten when the second device is connected, breaking commands to the first device. `connectionState` becomes ambiguous. `canSendHello` always refers to the last-connected device.
-
-**Prevention:**
-For v2.0, scope the second wearable to a sequential (not simultaneous) connection model: only one device connected at a time, with switching between them via the existing disconnect-reconnect flow. Document this constraint in the ADR. Do not attempt multi-peripheral simultaneously in this milestone.
-
-**Warning signs:**
-- `GooseBLEClient` attempts to hold two `activePeripheral` references.
-- `commandCharacteristic` is reassigned during the connection of the second device.
-- UI shows `connectionState = "ready"` for both devices simultaneously.
-
-**Phase to address:** WEAR-01 — define the single-active-device constraint explicitly before any multi-device code is written.
-
----
-
-### Pitfall 11: `device_type` TEXT in the SQLite schema accepts any string — wrong type silently stored, corrupts metric queries
-
-**What goes wrong:**
-The `decoded_frames` table has `device_type TEXT NOT NULL`. The `raw_evidence` table has no `device_type` column — the device model is captured only in `device_model TEXT NOT NULL`. The `ble_raw_notifications` table has `device_type TEXT` (nullable). These columns accept any string; there is no CHECK constraint enforcing that `device_type` must be one of `GOOSE`, `GEN4`, `MAVERICK`, `PUFFIN`. When the second wearable is added, its device type string (e.g., `POLAR_OH1` or `AMAZFIT`) is stored verbatim. Metric queries that `WHERE device_type = 'GOOSE' OR device_type = 'GEN4'` now silently exclude the second wearable, producing metrics that appear correct but are computed from incomplete data.
-
-**Why it happens:**
-The existing code hardcodes two device types and no future extensibility guard was built in. The Rust `parse_device_type` function only accepts four strings; any other string returns an error. But the SQL schema has no equivalent validation. If the second wearable's data bypasses `parse_device_type` (e.g., stored via a direct SQL insert from a new bridge method), a new device_type value enters the schema without going through the Rust validation layer.
-
-**Consequences:**
-Historical data for the second wearable is stored correctly but excluded from all metric rollups that filter by known device types. The dashboard (if one exists) shows health scores computed only from WHOOP data, silently ignoring Polar/Amazfit data. This is a silent correctness bug, not a crash.
-
-**Prevention:**
-Before inserting any second-wearable frames, extend `parse_device_type` in `bridge.rs` with the new device type string. Add the new type to `DeviceType` in `protocol.rs`. Add a `CHECK (device_type IN ('GEN4','MAVERICK','PUFFIN','GOOSE','POLAR_OH1'))` constraint to the schema migration for the second wearable. Test that metric queries include the new device type in their results.
-
-**Warning signs:**
-- Second wearable frames are stored but metric dashboard scores do not change after a day of use.
-- `SELECT DISTINCT device_type FROM decoded_frames` shows a new string that `parse_device_type` does not recognize.
-- No new `DeviceType` variant was added to `protocol.rs` for the second wearable.
-
-**Phase to address:** WEAR-02 (Rust parsing module for second wearable) — the schema migration and `DeviceType` extension must be the first change, before any parsing logic.
-
----
-
-### Pitfall 12: `GooseUploadService` classifies device generation from a single string comparison — breaks for non-WHOOP devices
-
-**What goes wrong:**
-`GooseUploadService.performUpload` contains: `let deviceGeneration = deviceType == "GEN4" ? "4.0" : "5.0"`. Any device that is not `"GEN4"` receives `device_generation = "5.0"` in the upload payload, including the second wearable. The server's `POST /v1/ingest-decoded` endpoint stores `device_generation` as metadata. The second wearable (Polar OH1, Amazfit, etc.) is silently tagged as WHOOP 5.0 in TimescaleDB.
-
-**Why it happens:**
-The classification was written as a two-way branch because only two device types existed at the time. Extending to three device types requires changing this branch, but it is easy to miss because the logic is in the upload service, not in the BLE layer or the Rust bridge.
-
-**Consequences:**
-TimescaleDB contains heart rate data tagged `device_generation = "5.0"` for a Polar OH1. Queries filtering by `device_generation` are wrong. The server cannot distinguish WHOOP Gen5 data from Polar OH1 data in retrospect without re-processing all rows.
-
-**Prevention:**
-Replace the two-way branch with a proper mapping from `rustDeviceType` to a `device_generation` string, defaulting to the device's own identifier (e.g., `"POLAR_OH1"`) rather than a WHOOP generation string. Coordinate with the server's `DecodedBatch` schema to accept non-WHOOP generation strings.
-
-**Warning signs:**
-- Second wearable data uploaded with `device_generation = "5.0"` in the JSON payload.
-- `deviceType == "GEN4" ? "4.0" : "5.0"` remains unchanged after the second wearable is added.
-- TimescaleDB shows two different wearable types with the same `device_generation`.
-
-**Phase to address:** WEAR-03 (second wearable E2E upload) — update `GooseUploadService` in the same commit that adds the second wearable's bridge method.
+**Phase to address:** Recovery V2 — add the pre-flight database existence check as part of the bridge call wrapper.
 
 ---
 
@@ -319,11 +285,11 @@ Replace the two-way branch with a proper mapping from `rustDeviceType` to a `dev
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Keep "V5" naming for Gen5 guards (`supportsV5HistoricalSync`) after Gen4 support added | Zero renaming effort | Misleading to future developers; "V5" means "Gen5 only" but the code also serves Gen4 after fix | Never — rename when Gen4 support is added |
-| Derive `rustDeviceType` from characteristic UUID prefix at notification time | Simple, no stored state | Breaks on third device type; wrong header length causes frame corruption | Never for a device with its own parsing module |
-| `panic = "abort"` applied uniformly across all targets | Safe on iOS (correct) | Kills JVM process on Android; no error recovery possible | iOS only — override for Android |
-| Single `GooseBLEClient` instance manages two devices | No architecture change | Ambiguous connection state, overwritten characteristics | Acceptable in v2.0 only if single-device-at-a-time is enforced and documented |
-| Hardcode `device_generation` as `"5.0"` fallback in upload | Works for WHOOP-only data | Silent tagging of non-WHOOP data as WHOOP Gen5 | Never once a second wearable is added |
+| Manual `objectWillChange.send()` from `GooseBLEHRMonitorManager` | No `GooseBLEClient` refactoring | Fragile — new HR state properties require remembering to add the send; easy to miss | Never — promote to `@Published` on `GooseBLEClient` |
+| Sharing `coreBluetoothQueue` between WHOOP and HR managers | Zero new queue objects | Hidden serialisation; HR notifications delayed during WHOOP sync bursts | Acceptable only if HR notification frequency is < 0.1 Hz; not acceptable at 1 Hz |
+| `willRestoreState` stub on HR manager while retaining `RestoreIdentifierKey` | No code to write | Leaked zombie peripheral in CoreBluetooth connection pool after crash | Never — either implement or remove the key |
+| Time-window-only filter (no `device_id`) for upload query | Simple, no schema migration | Cannot distinguish WHOOP from HR monitor frames in a two-device capture session | Acceptable only until a real two-device session is needed |
+| Hardcoded English status strings in `@Published var` properties | Zero localisation work now | pt-PT UI shows mixed-language content; `"reconnecting after disconnect"` is in English | Never for any string that appears in a SwiftUI view |
 
 ---
 
@@ -331,12 +297,14 @@ Replace the two-way branch with a proper mapping from `rustDeviceType` to a `dev
 
 | Integration Point | Common Mistake | Correct Approach |
 |-------------------|----------------|------------------|
-| Rust → JNI (Android) | Return `jstring` via `env.new_string()` with unchecked content | Validate no null bytes in JSON; prefer `jbyteArray` for binary payloads |
-| Android build → rusqlite bundled | Assume iOS linker config works for Android | Set `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` and `AR` explicitly; use NDK r25+ clang |
-| GooseNotificationEvent → Rust bridge | Use `rustDeviceType` heuristic for third device | Resolve `WearableKind` at connect time; propagate through event struct |
-| GooseUploadService → server | Two-way `deviceType == "GEN4"` branch | Extend to a full mapping; coordinate with server `device_generation` schema |
-| Second wearable → SQLite schema | Store new device type string without schema migration | Add `DeviceType` variant in Rust + `CHECK` constraint in migration before first insert |
-| Gen4 → historical sync guards | `supportsV5HistoricalSync` returns false for Gen4 | Check `connectedDeviceKind` enum, not `commandCharacteristic` UUID prefix |
+| Two CBCentralManager instances | Share `coreBluetoothQueue` | Give each manager its own dedicated serial queue |
+| HR monitor scan UI | Call `startHRMonitorScan()` directly in button action | Implement `pendingScan` flag; start scan only in `centralManagerDidUpdateState(.poweredOn)` |
+| CR-02 `device_id` filter | Compare UUID string against `device_model` (name) | Add `active_device_id` column to `decoded_frames`; filter by UUID-to-UUID |
+| RTC SET_TIME command | Send from `didConnect` callback | Send only after `connectionState == "ready"` + GET clock response confirms drift |
+| `HealthDataStore` bridge queries | Call `bridge.request(...)` inside `@MainActor` function | Dispatch to `packetInputQueue`, then `DispatchQueue.main.async` for state write |
+| Localisation | Wrap only `Text("...")` literals | Also convert dynamic `@Published` strings (status, error messages) to localised enum cases |
+| Reconnect backoff `DispatchWorkItem` | Forget to cancel on `didConnect` | Cancel workItem in `didConnect`, `stopScan`, and manual disconnect paths |
+| SQLite migration for CR-02 | `CREATE TABLE IF NOT EXISTS` to add column | `PRAGMA table_info` check + `ALTER TABLE ADD COLUMN` for live databases |
 
 ---
 
@@ -344,21 +312,26 @@ Replace the two-way branch with a proper mapping from `rustDeviceType` to a `dev
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Synchronous Rust bridge on Android main thread | ANR dialog after 5 seconds; unresponsive UI | Wrap all bridge calls in `withContext(Dispatchers.IO)` | Immediately on first expensive bridge call (SQLite query) |
-| Frame reassembly buffer not keyed by device when multiple wearables active in sequence | Frame from second wearable interpreted with wrong device's buffered bytes | Flush reassembly buffer on device disconnect; key includes `deviceID` (already done, but verify flush on disconnect) | First switch between two wearables without explicit disconnect |
-| Second wearable adds unbounded new SQLite rows to `decoded_frames` without device-scoped TTL | Storage grows unboundedly on device with two wearables | Add a `device_type`-scoped cleanup policy when second wearable is integrated | After ~30 days of dual-wearable capture |
+| Recovery V2 bridge query on `@MainActor` | 200–500 ms UI freeze on dashboard open | Dispatch all bridge calls to `packetInputQueue` | Immediately — first time the query runs over 30 days of data |
+| HR monitor 0x2A37 notifications dispatched to `DispatchQueue.main` | Main thread saturated at 1 Hz; UI jank | Keep HR callbacks on the BT queue; only hop to main for `@Published` state writes | At 60 BPM (1 Hz) with a complex main thread |
+| `discoveredHRDevices.sort` on BT queue while UI reads on main | Intermittent array corruption | NSLock or snapshot-to-main pattern | Whenever scan results arrive faster than the main thread processes them |
+| `lazy var databasePath` pointing to deleted file | All bridge calls return "not found" | Pre-flight `fileExists` check; invalidate cached path on error | After device restore from backup |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Gen4 historical sync:** Gen4 device connects and shows "connected" but `canSyncHistorical` is actually false — verify `connectedDeviceKind` is used in the guard, not `commandCharacteristic.uuid` prefix.
-- [ ] **Gen4 upload:** Upload payload logs `device_generation = "5.0"` instead of `"4.0"` — verify the `deviceType == "GEN4"` branch in `GooseUploadService` is reached with a real Gen4 device.
-- [ ] **Android compilation:** `cargo build --target aarch64-linux-android` completes without error on a clean checkout — verify `.cargo/config.toml` linker settings work after `git clone`.
-- [ ] **Android panic safety:** JNI bridge function that receives an invalid `device_type` string returns a Java exception, does not abort the JVM — verify `catch_unwind` or `Result`-only surface at every JNI entry point.
-- [ ] **Second wearable background scan:** Second wearable is discovered after locking the screen for 60 seconds — verify its primary service UUID is in the `withServices` array.
-- [ ] **Second wearable device_type in schema:** `SELECT DISTINCT device_type FROM decoded_frames` shows the new device type string, not `GOOSE` — verify `parse_device_type` extension.
-- [ ] **Second wearable upload:** TimescaleDB row for second wearable has correct `device_generation` field, not `"5.0"` — verify `GooseUploadService` mapping extended.
+- [ ] **HR scan UI:** `startHRMonitorScan()` is called and devices appear — verify scan also works after the app is backgrounded and foregrounded (state restoration or re-scan required).
+- [ ] **HR independent capture:** HR frames appear in `decoded_frames` when WHOOP is not connected and no WHOOP capture session is active.
+- [ ] **CR-02 filter:** `SELECT * FROM decoded_frames WHERE active_device_id = '<WHOOP UUID>'` returns only WHOOP frames, not HR monitor frames — verify after a mixed two-device session.
+- [ ] **CR-02 migration:** Deploying v3.0 on a device with existing v2.0 data does not reduce `SELECT COUNT(*) FROM decoded_frames` — verify migration preserves rows.
+- [ ] **Recovery V2 dashboard:** Dashboard loads without a perceptible freeze on a device with 30 days of capture data.
+- [ ] **Recovery V2 bridge dispatch:** Instruments shows no `goose_bridge_handle_json` call on the main thread during dashboard load.
+- [ ] **pt-PT localisation:** `LabeledContent("Reconnect", value: ble.reconnectState)` — the value `"reconnecting after disconnect"` is translated (not just the label key).
+- [ ] **pt-PT localisation:** App Store Connect language metadata is set to Portuguese (Portugal) — adding pt-PT in code without updating App Store metadata means the locale is never activated for review.
+- [ ] **RTC sync sequencing:** Clock SET_TIME is never logged before `connectionState == "ready"` appears in the log — verify via a GATT discovery timing test.
+- [ ] **Reconnect backoff cancellation:** Connecting manually during a backoff delay does not produce two `"reconnect.requested"` log entries — verify with a simulated rapid connect/disconnect cycle.
+- [ ] **HR monitor backoff isolation:** WHOOP disconnect does not trigger an HR monitor reconnect attempt — verify backoff workItems are stored per-manager.
 
 ---
 
@@ -366,12 +339,13 @@ Replace the two-way branch with a proper mapping from `rustDeviceType` to a `dev
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Wrong `device_type` stored in `decoded_frames` | HIGH | `UPDATE decoded_frames SET device_type = '...' WHERE characteristic_uuid LIKE '61080%'`; re-run metric algorithms |
-| Gen4 historical sync silently disabled | LOW | Fix `supportsV5HistoricalSync` guard; trigger manual sync; no data loss |
-| `panic = "abort"` causing JVM crash on Android | LOW | Add `panic = "unwind"` to Android target profile; rebuild; existing data unaffected |
-| `device_generation = "5.0"` for second wearable in TimescaleDB | MEDIUM | `UPDATE` all rows where `device_id` matches the second wearable's UUID; requires knowing the device UUID at insertion time |
-| Android build blocked by `tungstenite` TLS compile error | LOW | Add `#[cfg(not(target_os = "android"))]` guard on WebSocket module; no data involved |
-| Frame reassembly corruption from wrong header length | MEDIUM | Corrupted frames in `decoded_frames` cannot be recovered; re-capture required if original `raw_evidence` not stored |
+| HR frames not persisted (gated on WHOOP session) | MEDIUM | Introduce independent write path; existing HR frames during WHOOP sessions are intact; future sessions covered |
+| CR-02 migration drops existing frames | HIGH | Restore from `goose.sqlite` backup (if taken pre-migration); re-run historical sync; no recovery without backup |
+| RTC SET_TIME sent before GATT ready — silent discard | LOW | Trigger manual clock sync from DeviceView; strap clock drift continues until manual fix |
+| `databasePath` stale after backup restore | LOW | Delete app and reinstall; all captured data is lost unless user has a manual export |
+| Mixed-language UI after partial pt-PT migration | LOW | Finish converting all `@Published` status strings; no data involved |
+| Zombie peripheral from ignored `willRestoreState` | LOW | Remove `CBCentralManagerOptionRestoreIdentifierKey` from HR manager and redeploy |
+| Reconnect backoff fires after manual connect | LOW | Cancel backoff workItem in `didConnect` (fix is one line); no data loss |
 
 ---
 
@@ -379,38 +353,35 @@ Replace the two-way branch with a proper mapping from `rustDeviceType` to a `dev
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Device type string mismatch (Pitfall 1) | WEAR-01 | `SELECT DISTINCT device_type FROM decoded_frames` after second wearable capture session |
-| Gen4 classification race at connect time (Pitfall 2) | GEN4-01 | `canSyncHistorical = true` for Gen4 device in UI after connection |
-| Double `scanForPeripherals` call (Pitfall 3) | GEN4-01 | Grep for second `scanForPeripherals` call; logs show single `"scan.started"` |
-| Background scan missing second wearable UUID (Pitfall 4) | WEAR-01 | Device discovered in BLE log after 60s screen-lock |
-| `panic = "abort"` on Android JNI (Pitfall 5) | ANDROID-01 | Rust function returning `Err` returns Java exception, not SIGABRT in logcat |
-| rusqlite bundled + NDK linker (Pitfall 6) | ANDROID-01 | `cargo build --target aarch64-linux-android` succeeds on clean checkout |
-| JNI MUTF-8 string mismatch (Pitfall 7) | ANDROID-02 | Send JSON with null byte; JVM does not crash |
-| Blocking main thread via JNI (Pitfall 8) | ANDROID-02 | StrictMode shows no disk I/O on main thread; no ANR in 30s test |
-| tungstenite TLS compile failure on Android (Pitfall 9) | ANDROID-01 | `cargo build --target aarch64-linux-android` succeeds without TLS errors |
-| Single-peripheral state machine collision (Pitfall 10) | WEAR-01 | ADR documents single-device constraint; `activePeripheral` is not overwritten during wearable switch |
-| Wrong `device_type` in SQLite schema (Pitfall 11) | WEAR-02 | `SELECT DISTINCT device_type FROM decoded_frames` shows expected string for second wearable |
-| `GooseUploadService` two-way branch (Pitfall 12) | WEAR-03 | TimescaleDB `device_generation` field matches second wearable identity, not `"5.0"` |
+| Shared BT queue serialisation (Pitfall 1) | WEAR-02 — HR scan UI | Instruments: two separate queues visible for WHOOP and HR managers |
+| `discoveredHRDevices` data race (Pitfall 2) | WEAR-02 — HR scan UI | Thread Sanitiser passes during a scan session |
+| `startScan` before `.poweredOn` silent no-op (Pitfall 3) | WEAR-02 — HR scan UI | Scan starts after Bluetooth state `.poweredOn` confirmed in log |
+| HR frames gated on WHOOP session (Pitfall 4) | WEAR-02 — independent capture | HR frames in `decoded_frames` with WHOOP disconnected |
+| CR-02 UUID vs name namespace mismatch (Pitfall 5) | CR-02 | `WHERE active_device_id = ?` returns correct rows |
+| Recovery V2 bridge on `@MainActor` (Pitfall 6) | Recovery V2 dashboard | Instruments shows no bridge call on main thread |
+| pt-PT dynamic string coverage (Pitfall 7) | pt-PT localisation | Zero English strings visible in pt-PT simulator run |
+| RTC sync before GATT ready (Pitfall 8) | WHOOP 4.0 RTC sync | No `failClockCommand` log entry during GATT window |
+| Reconnect backoff cancel race (Pitfall 9) | BLE reconnect backoff | Single `connect` call per disconnect event in log |
+| `objectWillChange` fragility (Pitfall 10) | WEAR-02 — HR scan UI | All HR state changes reflected in UI without manual navigation |
+| `willRestoreState` stub with RestoreIdentifierKey (Pitfall 11) | WEAR-02 | Remove key or implement handler; no zombie peripheral after restart |
+| CR-02 schema migration destructiveness (Pitfall 12) | CR-02 | Row count unchanged after migration on v2.0 database |
+| Stale `databasePath` lazy var (Pitfall 13) | Recovery V2 | Bridge returns data after simulated backup restore |
 
 ---
 
 ## Sources
 
-- `GooseSwift/GooseBLETypes.swift` — `rustDeviceType` computed property (line 34–36): characteristic UUID prefix heuristic
-- `GooseSwift/GooseBLEClient+Commands.swift` — `supportsV5HistoricalSync`, `isV5CommandCharacteristic` (lines 147–165)
-- `GooseSwift/GooseBLEClient+UserActions.swift` — `startScan` passing `whoopServices` array (lines 134–138)
-- `GooseSwift/GooseBLEClient.swift` — `whoopServices` array with both WHOOP UUID families (lines 366–369)
-- `GooseSwift/GooseAppModel+NotificationPipeline.swift` — `gooseFrames(in:event:)` header length branch on `rustDeviceType` (lines 791–807)
-- `GooseSwift/GooseUploadService.swift` — `deviceGeneration` two-way branch (line 88)
-- `Rust/core/src/bridge.rs` — `parse_device_type` accepting `"GEN_4"`, `"GEN4"`, `"GOOSE"` variants (lines 7956–7966)
-- `Rust/core/src/protocol.rs` — `DeviceType` enum with Gen4 header length and CRC rules (lines 26–58)
-- `Rust/core/src/store.rs` — `decoded_frames` schema with `device_type TEXT NOT NULL` (lines 951–970); `ble_raw_notifications` schema (lines 1561–1583)
-- `Rust/core/Cargo.toml` — `panic = "abort"` in release profile (line 156); `crate-type = ["rlib", "staticlib", "cdylib"]` (line 12); `tungstenite = "0.28"` (line 146)
-- `Scripts/build_ios_rust.sh` — `CARGO_TARGET_AARCH64_APPLE_IOS_LINKER` pattern (lines 93–109)
-- rusqlite README — `bundled` feature compiles SQLite via `cc` crate, requires host C compiler to be set (Context7 `/rusqlite/rusqlite`)
-- Apple Developer — `UIBackgroundModes: bluetooth-central` requires `withServices:` array for background scanning (non-nil required in background)
-- JNI Specification — Modified UTF-8 encoding for `NewStringUTF` / `GetStringUTFChars`; null bytes encoded as `0xC0 0x80`
+- `GooseSwift/GooseBLEClient+HRMonitor.swift` — `GooseBLEHRMonitorManager` class; shared `coreBluetoothQueue`; `discoveredHRDevices` mutation on BT queue; `objectWillChange.send()` from `DispatchQueue.main.async`; `willRestoreState` stub
+- `GooseSwift/GooseBLEClient.swift` — `coreBluetoothQueue` declaration (line 84); `hrMonitorManager` as plain `let` (line 92); `@Published var reconnectState` (line 23)
+- `GooseSwift/GooseBLEClient+CentralDelegate.swift` — `centralManagerDidUpdateState` → `attemptAutomaticReconnect` pattern; `connect(peripheral, reason:)` called directly from `didDisconnectPeripheral` without backoff
+- `GooseSwift/GooseBLEClient+Commands.swift` — `writeClockCommand` six-guard sequence (lines 206–234); `scheduleClockCommandTimeout` `DispatchWorkItem` pattern (line 286)
+- `GooseSwift/HealthDataStore.swift` — `@MainActor` class (line 6); `lazy var databasePath` (line 54); `packetInputQueue` background dispatch pattern (lines 186–198)
+- `Rust/core/src/bridge.rs` — CR-02 comment: `// CR-02: per-row device_id filtering is deferred to v3.0 multi-device tracking.` (lines 3065–3070); `#[allow(dead_code)] // device_id filter deferred to v3.0 (namespace mismatch: UUID vs BLE name)` (line 3022)
+- `Rust/core/src/store.rs` — `decoded_frames` schema: `device_model TEXT NOT NULL`, `active_device_id TEXT` (lines 943, 1017); `ble_raw_notifications` schema: `device_id TEXT`, `active_device_name TEXT` (lines 1566–1567)
+- Apple Developer Documentation — CoreBluetooth state restoration; `CBCentralManagerOptionRestoreIdentifierKey` semantics; background scanning requires `withServices:` non-nil
+- Apple Developer Documentation — `CBCentralManager` initialisation is asynchronous; `centralManagerDidUpdateState` is the only safe place to start scanning
+- CLAUDE.md architectural constraint — "Rust bridge is synchronous: `goose_bridge_handle_json` blocks the calling thread. Never call from `@MainActor` with expensive methods; always dispatch to a background queue first."
 
 ---
-*Pitfalls research for: v2.0 Multi-Device & Platform Foundations*
-*Researched: 2026-06-03*
+*Pitfalls research for: v3.0 Wearable UX, CI Hardening & RTC Sync*
+*Researched: 2026-06-04*
