@@ -77,7 +77,7 @@ extension GooseBLEClient: CBCentralManagerDelegate {
       } else if activePeripheral == nil && rememberedDeviceID != nil {
         // BT was toggled off and back on with a remembered device — restart backoff cycle.
         reconnectBackoff.reset()
-        scheduleNextReconnect(reason: "bt_restored")
+        scheduleNextReconnect(reason: "backoff_retry")
       }
     } else {
       isScanning = false
