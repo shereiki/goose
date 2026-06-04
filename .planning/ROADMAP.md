@@ -104,7 +104,7 @@ Plans:
 **Goal:** All `@Published` property mutations in `GooseBLEClient+Commands.swift` and `GooseBLEClient+Parsing.swift` happen on the main thread, eliminating the runtime "Publishing changes from background threads" warnings produced by CoreBluetooth callbacks.
 **Requirements**: BLE-MT-01, BLE-MT-02, BLE-MT-03
 **Depends on:** Phase 10
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 **Success Criteria** (what must be TRUE):
 
   1. No "Publishing changes from background threads is not allowed" runtime warnings appear when the app is connected to a WHOOP or HR monitor
@@ -114,7 +114,7 @@ Plans:
 
 Plans:
 
-- [ ] 10.1-01-PLAN.md — Main-thread guards on all @Published mutators in GooseBLEClient+Commands.swift and +Parsing.swift; resolve duplicate updateReconnectState warning; cargo test -p goose-core gate
+- [x] 10.1-01-PLAN.md — Main-thread guards on all @Published mutators in GooseBLEClient+Commands.swift and +Parsing.swift; resolve duplicate updateReconnectState warning; cargo test -p goose-core gate
 
 ### Phase 11: HR Monitor Independent Capture
 
@@ -185,7 +185,7 @@ Plans:
 | 8.1. Gap closure WEAR-01/WEAR-03 | v2.0 | 2/2 | Complete | 2026-06-04 |
 | 9. BLE Stability & Data Integrity | v3.0 | 4/4 | Complete    | 2026-06-04 |
 | 10. HR Monitor Scan/Connect UI | v3.0 | 3/3 | Complete    | 2026-06-04 |
-| 10.1. BLE Main-Thread Publishing Fix | v3.0 | 0/1 | Not started | - |
+| 10.1. BLE Main-Thread Publishing Fix | v3.0 | 1/1 | Complete    | 2026-06-04 |
 | 11. HR Monitor Independent Capture | v3.0 | 0/? | Not started | - |
 | 12. WHOOP 4.0 RTC Clock Sync | v3.0 | 0/? | Not started | - |
 | 13. Recovery V2 Dashboard | v3.0 | 0/? | Not started | - |
