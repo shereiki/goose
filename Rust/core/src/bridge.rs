@@ -3046,6 +3046,7 @@ fn upload_get_recent_decoded_streams_bridge(
     let frames = store.decoded_frames_between(&since_dt, &now_dt)?;
 
     let mut hr: Vec<serde_json::Value> = Vec::new();
+
     let rr: Vec<serde_json::Value> = Vec::new();
     let mut events: Vec<serde_json::Value> = Vec::new();
     let battery: Vec<serde_json::Value> = Vec::new();
@@ -3060,13 +3061,22 @@ fn upload_get_recent_decoded_streams_bridge(
             continue;
         }
 
-        // Filter by device_id when set (UUID comparison; the store uses string IDs)
+        // D-06 / CR-02: filter by device_id when set.
+        // device_model in raw_evidence holds the sanitized BLE device name (sent by iOS).
+        // The iOS upload service sends the same name as device_id, so we compare against
+        // raw_evidence.device_model for per-row filtering.
         if !args.device_id.is_empty() {
-            // The evidence_id encodes device identity via the capture session.
-            // For now we rely on the time-window filter (since_ts). The device_id
-            // field in the upload payload identifies the BLE peripheral UUID that
-            // the iOS app is currently connected to; all frames in the local
-            // SQLite belong to one physical device, so no per-row filtering is needed.
+            match store.raw_evidence(&frame.evidence_id) {
+                Ok(Some(evidence)) => {
+                    if evidence.device_model != args.device_id {
+                        continue;
+                    }
+                }
+                _ => {
+                    // No raw evidence found or lookup failed — skip frame to be safe
+                    continue;
+                }
+            }
         }
 
         let parsed: Option<ParsedPayload> =
@@ -3141,6 +3151,32 @@ fn upload_get_recent_decoded_streams_bridge(
                 // Command, CommandResponse, Raw, None — no biometric streams to extract
             }
         }
+
+        // HR monitor branch: 0x2A37 standard GATT notifications stored with device_type == "HR_MONITOR".
+        // parsed_payload_json is "null" for these rows (parse_frame was bypassed in capture_import.rs),
+        // so the match above falls through to `_ => {}`. Gate on device_type string.
+        // D-01: bpm + rr_intervals embedded in hr entry. D-02: NOT pushed to top-level rr.
+        // D-03: captured_at parsed to f64 unix seconds via unix_from_iso8601 helper.
+        // T-08.1-01: hex::decode or parse_hr_measurement failures skip the frame silently.
+        if frame.device_type == "HR_MONITOR" {
+            let bytes = match hex::decode(&frame.payload_hex) {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+            let measurement =
+                match crate::heart_rate_gatt_protocol::parse_hr_measurement(&bytes) {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+            // D-03: captured_at is "YYYY-MM-DDTHH:MM:SS.mmmZ" — parse to f64 unix seconds.
+            // T-08.1-02: on parse failure use null rather than panicking.
+            let ts_opt: Option<f64> = unix_from_iso8601(&frame.captured_at);
+            hr.push(json!({
+                "ts": ts_opt,
+                "bpm": measurement.hr_bpm,
+                "rr_intervals": measurement.rr_intervals_ms,
+            }));
+        }
     }
 
     let result = json!({
@@ -3206,6 +3242,59 @@ fn days_to_ymd(days: u32) -> (u32, u32, u32) {
     let month = j + 2 - 12 * l;
     let year = 100 * (n - 49) + i + l;
     (year, month, day)
+}
+
+/// Parse the codebase's ISO-8601 format "YYYY-MM-DDTHH:MM:SS.mmmZ" to unix seconds (f64).
+/// D-03: inverse of chrono_from_unix / days_to_ymd — no chrono dependency.
+/// Returns None on any malformed component (T-08.1-02: no panic on bad timestamps).
+fn unix_from_iso8601(s: &str) -> Option<f64> {
+    // Expected format: "YYYY-MM-DDTHH:MM:SS.mmmZ" (may omit milliseconds or Z suffix)
+    // Minimum: "YYYY-MM-DDTHH:MM:SS" (19 chars)
+    if s.len() < 19 {
+        return None;
+    }
+    let year: u32 = s[0..4].parse().ok()?;
+    let month: u32 = s[5..7].parse().ok()?;
+    let day: u32 = s[8..10].parse().ok()?;
+    let hour: u32 = s[11..13].parse().ok()?;
+    let minute: u32 = s[14..16].parse().ok()?;
+    let sec: u32 = s[17..19].parse().ok()?;
+    // Milliseconds: optional, after "." if present
+    let millis: f64 = if s.len() > 20 && s.as_bytes().get(19) == Some(&b'.') {
+        // Collect digits after "."
+        let frac: &str = s[20..].trim_end_matches('Z');
+        let frac_digits: &str = frac.split_once(|c: char| !c.is_ascii_digit()).map_or(frac, |(d, _)| d);
+        if frac_digits.is_empty() {
+            0.0
+        } else {
+            let raw: f64 = frac_digits.parse().ok()?;
+            // Normalise to milliseconds (e.g. "123" → 123 ms, "12" → 12 ms, "1" → 1 ms)
+            raw / 10f64.powi(frac_digits.len() as i32 - 3)
+        }
+    } else {
+        0.0
+    };
+
+    // Validate calendar ranges
+    if month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || sec > 59 {
+        return None;
+    }
+
+    // Convert calendar date to days since Unix epoch via inverse Julian-day math
+    // (mirror of days_to_ymd, which implements the same Gregorian algorithm)
+    let a = (14u32.wrapping_sub(month)) / 12;
+    let y = year + 4800 - a;
+    let m = month + 12 * a - 3;
+    let jdn = day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
+    // Julian Day Number of 1970-01-01 is 2440588
+    let days_since_epoch = jdn.checked_sub(2_440_588)?;
+
+    let secs = days_since_epoch as f64 * 86400.0
+        + hour as f64 * 3600.0
+        + minute as f64 * 60.0
+        + sec as f64
+        + millis / 1000.0;
+    Some(secs)
 }
 
 fn evaluate_calibration_dataset_bridge(
