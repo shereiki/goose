@@ -8516,6 +8516,135 @@ fn c_abi_bridge_roundtrips_json_and_allows_freeing_results() {
     unsafe { goose_bridge_free_string(null_response_ptr) };
 }
 
+#[test]
+fn bridge_panic_catch_returns_error_json_and_normal_requests_still_succeed() {
+    // FIX-04: panic triggered via the deterministic test.panic bridge method.
+    // Route through goose_bridge_handle_json so catch_unwind is exercised end-to-end.
+    let panic_request =
+        std::ffi::CString::new(r#"{"schema":"goose.bridge.request.v1","request_id":"panic-test","method":"test.panic","args":{}}"#)
+        .unwrap();
+    let panic_ptr = unsafe { goose_bridge_handle_json(panic_request.as_ptr()) };
+    assert!(!panic_ptr.is_null(), "expected non-null response pointer");
+    let panic_json = unsafe { std::ffi::CStr::from_ptr(panic_ptr) }
+        .to_str()
+        .unwrap()
+        .to_owned();
+    unsafe { goose_bridge_free_string(panic_ptr) };
+
+    let panic_response: serde_json::Value = serde_json::from_str(&panic_json).unwrap();
+    assert_eq!(
+        panic_response["ok"], false,
+        "expected ok=false for panicking call, got: {panic_json}"
+    );
+    assert_eq!(
+        panic_response["error"]["code"], "panic",
+        "expected error.code=panic, got: {panic_json}"
+    );
+
+    // Regression: normal requests must still succeed after the catch_unwind wrap.
+    let ok_request =
+        std::ffi::CString::new(r#"{"schema":"goose.bridge.request.v1","request_id":"ok-test","method":"core.version","args":{}}"#)
+        .unwrap();
+    let ok_ptr = unsafe { goose_bridge_handle_json(ok_request.as_ptr()) };
+    assert!(!ok_ptr.is_null(), "expected non-null response pointer for core.version");
+    let ok_json = unsafe { std::ffi::CStr::from_ptr(ok_ptr) }
+        .to_str()
+        .unwrap()
+        .to_owned();
+    unsafe { goose_bridge_free_string(ok_ptr) };
+
+    let ok_response: serde_json::Value = serde_json::from_str(&ok_json).unwrap();
+    assert_eq!(
+        ok_response["ok"], true,
+        "expected ok=true for core.version after catch_unwind wrap, got: {ok_json}"
+    );
+}
+
+#[test]
+fn bridge_compact_raw_evidence_reduces_storage_and_is_noop_when_already_below_limit() {
+    // FIX-05: storage.compact_raw_evidence wires compact_raw_evidence_payloads_to_limit.
+    let tempdir = tempfile::tempdir().unwrap();
+    let db = tempdir.path().join("goose.sqlite");
+    let db_path = db.display().to_string();
+
+    // Seed the database with raw_evidence rows whose total payload_hex exceeds a small limit.
+    // Each row has 16 bytes of payload_hex (8 hex chars per byte → "aa" * 16 = 32 chars = 16 bytes).
+    // Insert 10 rows → 160 bytes total. We will compact to a limit of 50 bytes.
+    let store = GooseStore::open(&db).unwrap();
+    for i in 0..10i32 {
+        store
+            .insert_raw_evidence(RawEvidenceInput {
+                evidence_id: &format!("compact-test-{i}"),
+                source: "synthetic.compact",
+                captured_at: &format!("2026-01-0{:02}T00:00:00Z", i + 1),
+                device_model: "WHOOP 5.0 Goose",
+                payload: &vec![0xaa_u8; 16],
+                sensitivity: "synthetic",
+                capture_session_id: None,
+            })
+            .unwrap();
+    }
+    drop(store);
+
+    // First call: limit_bytes = 50; should compact rows (160 bytes > 50 bytes).
+    let compact_limit: i64 = 50;
+    let response = request(serde_json::json!({
+        "schema": "goose.bridge.request.v1",
+        "request_id": "compact-1",
+        "method": "storage.compact_raw_evidence",
+        "args": {
+            "database_path": db_path,
+            "limit_bytes": compact_limit
+        }
+    }));
+    assert!(response.ok, "compact call 1 failed: {:?}", response.error);
+    let result = response.result.unwrap();
+    assert!(
+        result.get("before_bytes").is_some(),
+        "missing before_bytes: {result}"
+    );
+    assert!(
+        result.get("after_bytes").is_some(),
+        "missing after_bytes: {result}"
+    );
+    assert!(
+        result.get("compacted_rows").is_some(),
+        "missing compacted_rows: {result}"
+    );
+    assert!(
+        result.get("freed_bytes").is_some(),
+        "missing freed_bytes: {result}"
+    );
+    let compacted_rows = result["compacted_rows"].as_i64().unwrap();
+    assert!(
+        compacted_rows > 0,
+        "expected compacted_rows > 0 when over limit, got: {compacted_rows}"
+    );
+    let after_bytes = result["after_bytes"].as_i64().unwrap();
+    assert!(
+        after_bytes <= compact_limit,
+        "expected after_bytes <= {compact_limit}, got: {after_bytes}"
+    );
+
+    // Second call: already at or below limit → no-op (compacted_rows == 0).
+    let response2 = request(serde_json::json!({
+        "schema": "goose.bridge.request.v1",
+        "request_id": "compact-2",
+        "method": "storage.compact_raw_evidence",
+        "args": {
+            "database_path": db_path,
+            "limit_bytes": compact_limit
+        }
+    }));
+    assert!(response2.ok, "compact call 2 failed: {:?}", response2.error);
+    let result2 = response2.result.unwrap();
+    let compacted_rows2 = result2["compacted_rows"].as_i64().unwrap();
+    assert_eq!(
+        compacted_rows2, 0,
+        "expected compacted_rows == 0 on no-op second pass, got: {compacted_rows2}"
+    );
+}
+
 fn request(value: serde_json::Value) -> BridgeResponse {
     serde_json::from_str(&handle_bridge_request_json(&value.to_string())).unwrap()
 }
