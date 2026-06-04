@@ -475,6 +475,6 @@ final class CaptureFrameWriteQueue: @unchecked Sendable {
       return String(format: "%.1f", Double(microseconds) / 1_000)
     }
 
-    return "total \(milliseconds("total_us"))ms | hex \(milliseconds("hex_decode_us"))ms | rawHex \(milliseconds("raw_hex_encode_us"))ms | raw \(milliseconds("raw_insert_us"))ms | parse \(milliseconds("frame_parse_us"))ms | decoded \(milliseconds("decoded_insert_us"))ms | timeline \(milliseconds("timeline_us"))ms | compact \(milliseconds("raw_compaction_us"))ms"
+    return "total \(milliseconds("total_us"))ms | hex \(milliseconds("hex_decode_us"))ms | raw \(milliseconds("raw_insert_us"))ms | parse \(milliseconds("frame_parse_us"))ms | decoded \(milliseconds("decoded_insert_us"))ms | timeline \(milliseconds("timeline_us"))ms | compact \(milliseconds("raw_compaction_us"))ms"
   }
 }
