@@ -130,6 +130,7 @@ final class MoreDataStore: ObservableObject {
     MoreRouteStatus(
       profile: OnboardingProfileSnapshot().hasRequiredDetails ? .ready : .pending,
       device: ble.connectionState == "ready" ? .ready : .pending,
+      hrMonitor: ble.hrConnectionState == "connected" ? .ready : .pending,
       connectionLab: model.helloSummary.hasPrefix("GET_HELLO") ? .ready : .pending,
       capture: captureSessionID == nil ? .pending : .ready,
       localStore: databaseExists ? .ready : .unavailable,

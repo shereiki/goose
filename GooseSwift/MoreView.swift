@@ -121,6 +121,8 @@ struct MoreView: View {
     switch route {
     case .device:
       DeviceView()
+    case .hrMonitor:
+      HRMonitorView()
     case .profile:
       MoreProfileView()
     case .connectionLab:
