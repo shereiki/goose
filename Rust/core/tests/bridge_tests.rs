@@ -8854,7 +8854,7 @@ fn bridge_hr_monitor_upload_stream_contains_bpm_and_rr() {
             "frames": [{
                 "evidence_id": "hr-mon-ev-1",
                 "source": "ios.corebluetooth.notification",
-                "captured_at": "2026-06-04T10:00:00.000Z",
+                "captured_at": "2020-06-04T10:00:00.000Z",
                 "device_model": "HR-Monitor-Test",
                 "frame_hex": HR_MONITOR_GATT_BYTES_WITH_RR,
                 "sensitivity": "user-owned-capture",
@@ -8916,7 +8916,7 @@ fn bridge_hr_monitor_upload_stream_no_rr_when_not_present() {
             "frames": [{
                 "evidence_id": "hr-mon-ev-norr",
                 "source": "ios.corebluetooth.notification",
-                "captured_at": "2026-06-04T10:01:00.000Z",
+                "captured_at": "2020-06-04T10:01:00.000Z",
                 "device_model": "HR-Monitor-Test",
                 "frame_hex": HR_MONITOR_GATT_BYTES_NO_RR,
                 "sensitivity": "user-owned-capture",
@@ -8964,7 +8964,7 @@ fn bridge_hr_monitor_upload_stream_device_id_filter() {
                 {
                     "evidence_id": "hr-mon-dev-a",
                     "source": "ios.corebluetooth.notification",
-                    "captured_at": "2026-06-04T10:02:00.000Z",
+                    "captured_at": "2020-06-04T10:02:00.000Z",
                     "device_model": "device-A",
                     "frame_hex": HR_MONITOR_GATT_BYTES_NO_RR,
                     "sensitivity": "user-owned-capture",
@@ -8973,7 +8973,7 @@ fn bridge_hr_monitor_upload_stream_device_id_filter() {
                 {
                     "evidence_id": "hr-mon-dev-b",
                     "source": "ios.corebluetooth.notification",
-                    "captured_at": "2026-06-04T10:03:00.000Z",
+                    "captured_at": "2020-06-04T10:03:00.000Z",
                     "device_model": "device-B",
                     "frame_hex": HR_MONITOR_GATT_BYTES_NO_RR,
                     "sensitivity": "user-owned-capture",
