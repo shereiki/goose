@@ -11,13 +11,72 @@ final class GooseBLEHRMonitorManager: NSObject, CBCentralManagerDelegate, CBPeri
   var connectedDeviceName: String?
   weak var owner: GooseBLEClient?
 
+  // Reconnect backoff state — all mutations must run on callbackQueue (the BLE queue).
+  var reconnectBackoff = ReconnectBackoff()
+  var callbackQueue: DispatchQueue?
+  var hrReconnectWorkItem: DispatchWorkItem?
+  var hrReconnectGeneration: Int = 0
+  var pendingHRPeripheral: CBPeripheral?
+
   func start(queue: DispatchQueue) {
     guard central == nil else { return }
+    callbackQueue = queue
     central = CBCentralManager(
       delegate: self,
       queue: queue,
       options: [CBCentralManagerOptionRestoreIdentifierKey: "com.goose.swift.hr-monitor"]
     )
+  }
+
+  private func cancelHRReconnectCycle() {
+    hrReconnectWorkItem?.cancel()
+    hrReconnectWorkItem = nil
+    hrReconnectGeneration += 1
+  }
+
+  private func scheduleNextHRReconnect() {
+    guard let delay = reconnectBackoff.nextDelay() else {
+      owner?.updateHRReconnectState("failed after 10 attempts")
+      reconnectBackoff.reset()
+      return
+    }
+    guard pendingHRPeripheral != nil else {
+      owner?.updateHRReconnectState("idle")
+      return
+    }
+    owner?.updateHRReconnectState(reconnectBackoff.statusString)
+    let generation = hrReconnectGeneration
+    let item = DispatchWorkItem { [weak self] in
+      guard let self,
+            self.hrReconnectGeneration == generation,
+            let peripheral = self.pendingHRPeripheral
+      else { return }
+      self.central?.connect(peripheral, options: nil)
+    }
+    hrReconnectWorkItem = item
+    callbackQueue?.asyncAfter(deadline: .now() + delay, execute: item)
+  }
+
+  func hrStopReconnect() {
+    callbackQueue?.async { [weak self] in
+      guard let self else { return }
+      self.cancelHRReconnectCycle()
+      self.reconnectBackoff.reset()
+      self.owner?.updateHRReconnectState("idle")
+    }
+  }
+
+  func hrRetryReconnect() {
+    callbackQueue?.async { [weak self] in
+      guard let self else { return }
+      guard self.pendingHRPeripheral != nil else {
+        self.owner?.updateHRReconnectState("idle")
+        return
+      }
+      self.cancelHRReconnectCycle()
+      self.reconnectBackoff.reset()
+      self.scheduleNextHRReconnect()
+    }
   }
 
   func startScan() {
@@ -89,6 +148,10 @@ final class GooseBLEHRMonitorManager: NSObject, CBCentralManagerDelegate, CBPeri
     hrPeripheral = peripheral
     peripheral.delegate = self
     peripheral.discoverServices([CBUUID(string: "180D")])
+    cancelHRReconnectCycle()
+    reconnectBackoff.reset()
+    pendingHRPeripheral = nil
+    owner?.updateHRReconnectState("idle")
   }
 
   func centralManager(
@@ -96,8 +159,11 @@ final class GooseBLEHRMonitorManager: NSObject, CBCentralManagerDelegate, CBPeri
     didDisconnectPeripheral peripheral: CBPeripheral,
     error: Error?
   ) {
+    let disconnectedPeripheral = peripheral
     hrConnectionState = "disconnected"
     hrPeripheral = nil
+    pendingHRPeripheral = disconnectedPeripheral
+    scheduleNextHRReconnect()
   }
 
   // MARK: - CBPeripheralDelegate

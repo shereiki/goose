@@ -21,7 +21,7 @@ private struct ConnectionContentView: View {
         LabeledContent("Connection", value: ble.connectionState)
         // Reconnect row shows "reconnecting (attempt N/10)" during backoff (Task 1).
         LabeledContent("Reconnect", value: ble.reconnectState)
-        // HR Reconnect row — added in Plan 04 when hrReconnectState is available on GooseBLEClient.
+        LabeledContent("HR Reconnect", value: ble.hrReconnectState)
         LabeledContent("Historical", value: historicalSyncValue)
         LabeledContent("Remembered", value: ble.rememberedDeviceDescription)
         LabeledContent("Live HR", value: liveHeartRateValue)
@@ -59,6 +59,21 @@ private struct ConnectionContentView: View {
             ble.retryReconnect()
           }
           Text("Reconnection failed after 10 attempts. Tap \"Try Again\" to restart.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        if ble.hrIsReconnecting {
+          Button("Stop HR Reconnect") {
+            ble.stopHRReconnect()
+          }
+        }
+
+        if ble.hrReconnectFailed {
+          Button("Retry HR Reconnect") {
+            ble.retryHRReconnect()
+          }
+          Text("HR monitor reconnection failed after 10 attempts. Tap \"Retry HR Reconnect\" to restart.")
             .font(.caption)
             .foregroundStyle(.secondary)
         }

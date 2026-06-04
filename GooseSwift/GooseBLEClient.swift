@@ -21,6 +21,7 @@ final class GooseBLEClient: NSObject, ObservableObject, @unchecked Sendable {
   @Published var liveHRVUpdatedAt: Date?
   @Published var liveHRVRMSSDSampleCount = 0
   @Published var reconnectState = "idle"
+  @Published var hrReconnectState = "idle"
   @Published var rememberedDeviceDescription = "none"
   @Published var activeDeviceName = "WHOOP"
   @Published var activeDeviceIdentifier: UUID?
@@ -951,6 +952,28 @@ final class GooseBLEClient: NSObject, ObservableObject, @unchecked Sendable {
 
   var reconnectFailed: Bool {
     reconnectState.hasPrefix("failed")
+  }
+
+  var hrIsReconnecting: Bool {
+    hrReconnectState.contains("reconnecting")
+  }
+
+  var hrReconnectFailed: Bool {
+    hrReconnectState.hasPrefix("failed")
+  }
+
+  func updateHRReconnectState(_ value: String) {
+    DispatchQueue.main.async { [weak self] in
+      self?.hrReconnectState = value
+    }
+  }
+
+  func stopHRReconnect() {
+    hrMonitorManager.hrStopReconnect()
+  }
+
+  func retryHRReconnect() {
+    hrMonitorManager.hrRetryReconnect()
   }
 
   init(startCentral: Bool = true) {
