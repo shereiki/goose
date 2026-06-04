@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AppShellView: View {
-  @EnvironmentObject private var model: GooseAppModel
   @EnvironmentObject private var router: AppRouter
   @StateObject private var healthStore = HealthDataStore()
   @State private var homeHealthPath: [HealthRoute] = []
@@ -28,7 +27,6 @@ struct AppShellView: View {
         return
       }
       router.selectedTab = newTab
-      model.recordUIAction("tab.selected", detail: newTab.title)
     }
   }
 
