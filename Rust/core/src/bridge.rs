@@ -2702,7 +2702,25 @@ pub unsafe extern "C" fn goose_bridge_handle_json(request_json: *const c_char) -
             ));
         }
     };
-    string_to_c_string(handle_bridge_request_json(request))
+    // Wrap ALL panic-prone work inside catch_unwind so that a panic in dispatch
+    // is caught at the FFI boundary and returned as a structured JSON error instead
+    // of aborting the process. AssertUnwindSafe is sound here because the closure
+    // does not alias mutable state that would be left in an inconsistent state on
+    // unwind — the bridge is stateless across calls and the only side effect is the
+    // returned C string allocation.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        string_to_c_string(handle_bridge_request_json(request))
+    })) {
+        Ok(ptr) => ptr,
+        Err(payload) => {
+            let message = payload
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic payload".to_string());
+            response_to_c_string(&bridge_error("unknown", "panic", message))
+        }
+    }
 }
 
 /// Free a C string previously returned by any `goose_bridge_*` or
