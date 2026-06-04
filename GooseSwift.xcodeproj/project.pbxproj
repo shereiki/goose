@@ -27,7 +27,6 @@
 		A10000000000000000000012 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* HealthKit.framework */; };
 		A10000000000000000000013 /* CoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* CoachView.swift */; };
 		A10000000000000000000015 /* HealthKitSleepImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* HealthKitSleepImporter.swift */; };
-		A10000000000000000000041 /* HealthKitFullImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000041 /* HealthKitFullImporter.swift */; };
 		A10000000000000000000019 /* OnboardingPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001F /* OnboardingPersistence.swift */; };
 		A1000000000000000000001A /* MoreView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* MoreView.swift */; };
 		A1000000000000000000001B /* CodexEmbeddedAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* CodexEmbeddedAuth.swift */; };
@@ -42,6 +41,7 @@
 		A1000000000000000000002C /* CoachChatTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002C /* CoachChatTypes.swift */; };
 		A1000000000000000000002D /* OpenAICoachResponsesClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002D /* OpenAICoachResponsesClient.swift */; };
 		A10000000000000000000040 /* CoachLocalToolContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000040 /* CoachLocalToolContext.swift */; };
+		A10000000000000000000041 /* HealthKitFullImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000041 /* HealthKitFullImporter.swift */; };
 		B10000000000000000000001 /* WorkoutLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* WorkoutLiveActivityAttributes.swift */; };
 		B10000000000000000000002 /* WorkoutLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* WorkoutLiveActivityController.swift */; };
 		B10000000000000000000003 /* GooseWorkoutLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000003 /* GooseWorkoutLiveActivityWidget.swift */; };
@@ -124,8 +124,6 @@
 		D10000000000000000000035 /* GooseBLEClient+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000035 /* GooseBLEClient+Commands.swift */; };
 		D10000000000000000000036 /* GooseBLEClient+DebugAndSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000036 /* GooseBLEClient+DebugAndSync.swift */; };
 		D10000000000000000000037 /* GooseBLEClient+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000037 /* GooseBLEClient+Parsing.swift */; };
-		D10000000000000000000058 /* GooseBLEClient+HRMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */; };
-		D10000000000000000000059 /* GooseBLEReconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000059 /* GooseBLEReconnect.swift */; };
 		D10000000000000000000038 /* GooseBLEClient+CentralDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000038 /* GooseBLEClient+CentralDelegate.swift */; };
 		D10000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift */; };
 		D1000000000000000000003A /* GooseAppModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000003A /* GooseAppModel+Lifecycle.swift */; };
@@ -153,10 +151,14 @@
 		D10000000000000000000055 /* RemoteServerPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000055 /* RemoteServerPersistence.swift */; };
 		D10000000000000000000056 /* MoreRemoteServerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000056 /* MoreRemoteServerViews.swift */; };
 		D10000000000000000000057 /* GooseAppModel+Upload.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000057 /* GooseAppModel+Upload.swift */; };
+		D10000000000000000000058 /* GooseBLEClient+HRMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */; };
+		D10000000000000000000059 /* GooseBLEReconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000059 /* GooseBLEReconnect.swift */; };
+		D1000000000000000000005A /* HRMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000005A /* HRMonitorView.swift */; };
 		T10000000000000000000001 /* WearableDescriptorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000002 /* WearableDescriptorTests.swift */; };
 		T10000000000000000000002 /* GooseBLETypesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000003 /* GooseBLETypesTests.swift */; };
 		T10000000000000000000003 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = T20000000000000000000005 /* XCTest.framework */; };
 		T10000000000000000000004 /* GooseUploadServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000006 /* GooseUploadServiceTests.swift */; };
+		T10000000000000000000005 /* HRMonitorStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000007 /* HRMonitorStateTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -184,12 +186,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		T20000000000000000000001 /* GooseSwiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GooseSwiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		T20000000000000000000002 /* WearableDescriptorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearableDescriptorTests.swift; sourceTree = "<group>"; };
-		T20000000000000000000003 /* GooseBLETypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseBLETypesTests.swift; sourceTree = "<group>"; };
-		T20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		T20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Xcode/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
-		T20000000000000000000006 /* GooseUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseUploadServiceTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* GooseSwiftApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseSwiftApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* GooseAppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseAppModel.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -215,7 +211,6 @@
 		A20000000000000000000017 /* GooseSwift.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GooseSwift.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000018 /* CoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachView.swift; sourceTree = "<group>"; };
 		A2000000000000000000001B /* HealthKitSleepImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitSleepImporter.swift; sourceTree = "<group>"; };
-		A20000000000000000000041 /* HealthKitFullImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitFullImporter.swift; sourceTree = "<group>"; };
 		A2000000000000000000001F /* OnboardingPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPersistence.swift; sourceTree = "<group>"; };
 		A20000000000000000000020 /* MoreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreView.swift; sourceTree = "<group>"; };
 		A20000000000000000000021 /* CodexEmbeddedAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexEmbeddedAuth.swift; sourceTree = "<group>"; };
@@ -230,6 +225,7 @@
 		A2000000000000000000002C /* CoachChatTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachChatTypes.swift; sourceTree = "<group>"; };
 		A2000000000000000000002D /* OpenAICoachResponsesClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICoachResponsesClient.swift; sourceTree = "<group>"; };
 		A20000000000000000000040 /* CoachLocalToolContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachLocalToolContext.swift; sourceTree = "<group>"; };
+		A20000000000000000000041 /* HealthKitFullImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitFullImporter.swift; sourceTree = "<group>"; };
 		B20000000000000000000001 /* WorkoutLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* WorkoutLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutLiveActivityController.swift; sourceTree = "<group>"; };
 		B20000000000000000000003 /* GooseWorkoutLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseWorkoutLiveActivityWidget.swift; sourceTree = "<group>"; };
@@ -312,8 +308,6 @@
 		D20000000000000000000035 /* GooseBLEClient+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+Commands.swift"; sourceTree = "<group>"; };
 		D20000000000000000000036 /* GooseBLEClient+DebugAndSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+DebugAndSync.swift"; sourceTree = "<group>"; };
 		D20000000000000000000037 /* GooseBLEClient+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+Parsing.swift"; sourceTree = "<group>"; };
-		D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+HRMonitor.swift"; sourceTree = "<group>"; };
-		D20000000000000000000059 /* GooseBLEReconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseBLEReconnect.swift; sourceTree = "<group>"; };
 		D20000000000000000000038 /* GooseBLEClient+CentralDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+CentralDelegate.swift"; sourceTree = "<group>"; };
 		D20000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+PeripheralDelegate.swift"; sourceTree = "<group>"; };
 		D2000000000000000000003A /* GooseAppModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseAppModel+Lifecycle.swift"; sourceTree = "<group>"; };
@@ -341,6 +335,16 @@
 		D20000000000000000000055 /* RemoteServerPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteServerPersistence.swift; sourceTree = "<group>"; };
 		D20000000000000000000056 /* MoreRemoteServerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreRemoteServerViews.swift; sourceTree = "<group>"; };
 		D20000000000000000000057 /* GooseAppModel+Upload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseAppModel+Upload.swift"; sourceTree = "<group>"; };
+		D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+HRMonitor.swift"; sourceTree = "<group>"; };
+		D20000000000000000000059 /* GooseBLEReconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseBLEReconnect.swift; sourceTree = "<group>"; };
+		D2000000000000000000005A /* HRMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRMonitorView.swift; sourceTree = "<group>"; };
+		T20000000000000000000001 /* GooseSwiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GooseSwiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		T20000000000000000000002 /* WearableDescriptorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearableDescriptorTests.swift; sourceTree = "<group>"; };
+		T20000000000000000000003 /* GooseBLETypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseBLETypesTests.swift; sourceTree = "<group>"; };
+		T20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		T20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Xcode/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		T20000000000000000000006 /* GooseUploadServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseUploadServiceTests.swift; sourceTree = "<group>"; };
+		T20000000000000000000007 /* HRMonitorStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRMonitorStateTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -362,7 +366,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		T60000000000000000000001 /* Frameworks (GooseSwiftTests) */ = {
+		T60000000000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -373,6 +377,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0BEACF3F2FD21DF100BEF3F4 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				T20000000000000000000005 /* XCTest.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
@@ -382,6 +394,7 @@
 				A40000000000000000000003 /* Scripts */,
 				A40000000000000000000004 /* Frameworks */,
 				A40000000000000000000005 /* Products */,
+				0BEACF3F2FD21DF100BEF3F4 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -523,6 +536,7 @@
 				D20000000000000000000048 /* GooseBLEClient+HistoricalHandlers.swift */,
 				D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */,
 				D20000000000000000000059 /* GooseBLEReconnect.swift */,
+				D2000000000000000000005A /* HRMonitorView.swift */,
 				D20000000000000000000037 /* GooseBLEClient+Parsing.swift */,
 				D20000000000000000000038 /* GooseBLEClient+CentralDelegate.swift */,
 				D20000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift */,
@@ -578,6 +592,7 @@
 				T20000000000000000000002 /* WearableDescriptorTests.swift */,
 				T20000000000000000000003 /* GooseBLETypesTests.swift */,
 				T20000000000000000000006 /* GooseUploadServiceTests.swift */,
+				T20000000000000000000007 /* HRMonitorStateTests.swift */,
 				T20000000000000000000004 /* Info.plist */,
 			);
 			path = GooseSwiftTests;
@@ -606,22 +621,6 @@
 			productReference = A2000000000000000000000D /* GooseSwift.app */;
 			productType = "com.apple.product-type.application";
 		};
-		T50000000000000000000001 /* GooseSwiftTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = T90000000000000000000001 /* Build configuration list for PBXNativeTarget "GooseSwiftTests" */;
-			buildPhases = (
-				T60000000000000000000002 /* Sources (GooseSwiftTests) */,
-				T60000000000000000000001 /* Frameworks (GooseSwiftTests) */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = GooseSwiftTests;
-			productName = GooseSwiftTests;
-			productReference = T20000000000000000000001 /* GooseSwiftTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
 		B50000000000000000000001 /* GooseWorkoutLiveActivityExtension */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = B90000000000000000000001 /* Build configuration list for PBXNativeTarget "GooseWorkoutLiveActivityExtension" */;
@@ -638,6 +637,22 @@
 			productName = GooseWorkoutLiveActivityExtension;
 			productReference = B20000000000000000000004 /* GooseWorkoutLiveActivityExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
+		};
+		T50000000000000000000001 /* GooseSwiftTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = T90000000000000000000001 /* Build configuration list for PBXNativeTarget "GooseSwiftTests" */;
+			buildPhases = (
+				T60000000000000000000002 /* Sources */,
+				T60000000000000000000001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GooseSwiftTests;
+			productName = GooseSwiftTests;
+			productReference = T20000000000000000000001 /* GooseSwiftTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -864,6 +879,7 @@
 				D10000000000000000000048 /* GooseBLEClient+HistoricalHandlers.swift in Sources */,
 				D10000000000000000000058 /* GooseBLEClient+HRMonitor.swift in Sources */,
 				D10000000000000000000059 /* GooseBLEReconnect.swift in Sources */,
+				D1000000000000000000005A /* HRMonitorView.swift in Sources */,
 				D10000000000000000000037 /* GooseBLEClient+Parsing.swift in Sources */,
 				D10000000000000000000038 /* GooseBLEClient+CentralDelegate.swift in Sources */,
 				D10000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift in Sources */,
@@ -879,13 +895,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		T60000000000000000000002 /* Sources (GooseSwiftTests) */ = {
+		T60000000000000000000002 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				T10000000000000000000001 /* WearableDescriptorTests.swift in Sources */,
 				T10000000000000000000002 /* GooseBLETypesTests.swift in Sources */,
 				T10000000000000000000004 /* GooseUploadServiceTests.swift in Sources */,
+				T10000000000000000000005 /* HRMonitorStateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -935,6 +952,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 26594BLKQ8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -998,6 +1016,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 26594BLKQ8;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -1028,7 +1047,6 @@
 				CODE_SIGN_ENTITLEMENTS = GooseSwift/GooseSwift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 26594BLKQ8;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1071,7 +1089,6 @@
 				CODE_SIGN_ENTITLEMENTS = GooseSwift/GooseSwift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 26594BLKQ8;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1112,7 +1129,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 26594BLKQ8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = GooseWorkoutLiveActivityExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -1141,7 +1157,6 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 26594BLKQ8;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = GooseWorkoutLiveActivityExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -1167,7 +1182,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 26594BLKQ8;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1180,7 +1194,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.tigercraft4.goose.tests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.tigercraft4.goose.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
@@ -1195,7 +1209,6 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 26594BLKQ8;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1208,7 +1221,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.tigercraft4.goose.tests";
+				PRODUCT_BUNDLE_IDENTIFIER = com.tigercraft4.goose.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
