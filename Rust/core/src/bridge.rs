@@ -1293,6 +1293,10 @@ struct CaptureImportFrameBatchArgs {
     compact_raw_payloads: bool,
     #[serde(default = "default_true")]
     include_results: bool,
+    /// Optional CoreBluetooth peripheral UUID supplied by the Swift caller. Written to
+    /// capture_sessions.active_device_id for every session referenced in this batch.
+    #[serde(default)]
+    active_device_id: Option<String>,
     frames: Vec<CapturedFrameInput>,
 }
 
@@ -5820,6 +5824,7 @@ fn capture_import_frame_batch_bridge(
         &args.frames,
         CapturedFrameBatchOptions {
             parser_version: &args.parser_version,
+            active_device_id: args.active_device_id.as_deref(),
         },
         CapturedFrameBatchOutputOptions {
             include_timeline_rows: args.include_timeline_rows,

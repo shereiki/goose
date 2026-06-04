@@ -2012,6 +2012,28 @@ impl GooseStore {
         Ok(changed > 0)
     }
 
+    /// Writes `active_device_id` to a capture session that currently has a NULL device id.
+    /// If the session already has an `active_device_id` the row is not modified (idempotent).
+    /// Returns `true` when the row was updated, `false` when it was already set or not found.
+    pub fn set_capture_session_device_id(
+        &self,
+        session_id: &str,
+        active_device_id: &str,
+    ) -> GooseResult<bool> {
+        validate_required("session_id", session_id)?;
+        validate_required("active_device_id", active_device_id)?;
+        let changed = self.conn.execute(
+            r#"
+            UPDATE capture_sessions
+            SET active_device_id = ?2
+            WHERE session_id = ?1
+              AND active_device_id IS NULL
+            "#,
+            params![session_id, active_device_id],
+        )?;
+        Ok(changed > 0)
+    }
+
     pub fn finish_capture_session(
         &self,
         session_id: &str,

@@ -4639,6 +4639,7 @@ fn local_health_validation_suite_reports_rhr_rollup_without_labels() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -4778,6 +4779,7 @@ fn local_health_validation_suite_reports_energy_rollup_without_labels() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();

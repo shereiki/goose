@@ -80,6 +80,11 @@ pub struct CapturedFrameInput {
 #[derive(Debug, Clone)]
 pub struct CapturedFrameBatchOptions<'a> {
     pub parser_version: &'a str,
+    /// Optional device id (CoreBluetooth peripheral UUID) for the session that produced
+    /// this batch. When supplied, the value is written to capture_sessions.active_device_id
+    /// for every session referenced by the batch frames. When None, existing session rows
+    /// are not modified (backward-compatible).
+    pub active_device_id: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -302,6 +307,20 @@ fn import_captured_frame_batch_with_output_options_in_transaction(
         }
     }
 
+    // FIX-01: propagate active_device_id from batch options to capture_sessions.
+    // Only runs when active_device_id is supplied and there are frames with a session ref.
+    // Uses a SET ... WHERE active_device_id IS NULL guard so already-tagged sessions are
+    // left untouched (idempotent on repeated import of the same batch).
+    if let Some(device_id) = options.active_device_id {
+        let session_ids: BTreeSet<&str> = frames
+            .iter()
+            .filter_map(|f| f.capture_session_id.as_deref())
+            .collect();
+        for session_id in session_ids {
+            store.set_capture_session_device_id(session_id, device_id)?;
+        }
+    }
+
     let timeline_started = Instant::now();
     let timeline_rows = if output_options.include_timeline_rows {
         packet_timeline_from_decoded_frames(&decoded_rows)?
@@ -416,6 +435,7 @@ pub fn import_capture_sqlite(
         &frames,
         CapturedFrameBatchOptions {
             parser_version: options.parser_version,
+            active_device_id: None,
         },
     )?;
 
