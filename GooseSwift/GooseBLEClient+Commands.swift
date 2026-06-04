@@ -607,7 +607,7 @@ extension GooseBLEClient {
     rememberedDeviceName = nil
     rememberedDeviceValidated = false
     autoReconnectTargetID = nil
-    autoReconnectInFlight = false
+    cancelReconnectCycle()
     if activePeripheral == nil {
       activeDeviceIdentifier = nil
       updateActiveDeviceName("WHOOP")
@@ -690,6 +690,56 @@ extension GooseBLEClient {
     )
   }
 
+  // Cancels any pending scheduled retry and bumps the generation token so a stale
+  // closure already in-flight (via asyncAfter) is a no-op when it runs.
+  // Must be called on coreBluetoothQueue (or main thread via delegate dispatch).
+  func cancelReconnectCycle() {
+    reconnectWorkItem?.cancel()
+    reconnectWorkItem = nil
+    reconnectGeneration += 1
+  }
+
+  // Schedules the next reconnect attempt using the backoff state.
+  // On circuit breaker exhaustion (10 attempts) transitions to failed state.
+  // Must be called on coreBluetoothQueue (or main thread via delegate dispatch).
+  func scheduleNextReconnect(reason: String) {
+    guard let delay = reconnectBackoff.nextDelay() else {
+      // Circuit breaker: all attempts exhausted.
+      updateReconnectState("failed after 10 attempts")
+      reconnectBackoff.reset()
+      return
+    }
+    // Update status AFTER nextDelay() incremented attemptCount.
+    updateReconnectState(reconnectBackoff.statusString)
+    let generation = reconnectGeneration
+    let item = DispatchWorkItem { [weak self] in
+      guard let self, self.reconnectGeneration == generation else { return }
+      self.attemptAutomaticReconnect(reason: reason)
+    }
+    reconnectWorkItem = item
+    // first attempt fires after baseDelay (1s), not immediately
+    coreBluetoothQueue.asyncAfter(deadline: .now() + delay, execute: item)
+  }
+
+  func stopReconnect() {
+    coreBluetoothQueue.async { [weak self] in
+      guard let self else { return }
+      self.cancelReconnectCycle()
+      self.reconnectBackoff.reset()
+      self.updateReconnectState("idle")
+      // remembered device is NOT cleared (D-05)
+    }
+  }
+
+  func retryReconnect() {
+    coreBluetoothQueue.async { [weak self] in
+      guard let self else { return }
+      self.cancelReconnectCycle()
+      self.reconnectBackoff.reset()
+      self.scheduleNextReconnect(reason: "manual_retry")
+    }
+  }
+
   func attemptAutomaticReconnect(reason: String) {
     guard let central, central.state == .poweredOn else {
       updateReconnectState("waiting for bluetooth")
@@ -699,7 +749,7 @@ extension GooseBLEClient {
       updateReconnectState("already connected")
       return
     }
-    guard !autoReconnectInFlight else {
+    guard !isReconnecting || reason == "backoff_retry" || reason == "manual_retry" || reason == "startup" else {
       record(level: .debug, source: "ble", title: "reconnect.skipped", body: "already in flight")
       return
     }
@@ -713,7 +763,6 @@ extension GooseBLEClient {
         return
       }
       updateReconnectState("retrieving remembered")
-      autoReconnectInFlight = true
       let retrieved = central.retrievePeripherals(withIdentifiers: [rememberedDeviceID])
       if let peripheral = retrieved.first {
         peripherals[peripheral.identifier] = peripheral
@@ -724,7 +773,6 @@ extension GooseBLEClient {
             : "auto.\(reason).remembered"
           connect(peripheral, reason: connectReason)
         } else if let name = peripheral.name, !isWhoopName(name) {
-          autoReconnectInFlight = false
           updateReconnectState("remembered was not WHOOP")
           rejectNonWhoopPeripheral(peripheral, reason: "remembered_name_mismatch")
         } else {

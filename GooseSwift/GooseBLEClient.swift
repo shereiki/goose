@@ -241,7 +241,9 @@ final class GooseBLEClient: NSObject, ObservableObject, @unchecked Sendable {
   var rememberedDeviceName: String?
   var rememberedDeviceValidated = false
   var autoReconnectTargetID: UUID?
-  var autoReconnectInFlight = false
+  var reconnectBackoff = ReconnectBackoff()
+  var reconnectWorkItem: DispatchWorkItem?
+  var reconnectGeneration: Int = 0
   var startupReconnectAttempted = false
   var pendingConnectionReason: String?
   var pendingAutomaticHistoricalSyncReason: String?
@@ -941,6 +943,14 @@ final class GooseBLEClient: NSObject, ObservableObject, @unchecked Sendable {
 
   var hasRememberedDevice: Bool {
     rememberedDeviceID != nil
+  }
+
+  var isReconnecting: Bool {
+    reconnectState.contains("reconnecting")
+  }
+
+  var reconnectFailed: Bool {
+    reconnectState.hasPrefix("failed")
   }
 
   init(startCentral: Bool = true) {
