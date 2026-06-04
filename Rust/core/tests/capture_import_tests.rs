@@ -179,6 +179,7 @@ fn imports_app_captured_frame_batch_and_returns_timeline_rows() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -222,6 +223,7 @@ fn captured_frame_batch_preserves_raw_bytes_when_session_reference_is_broken() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -269,6 +271,7 @@ fn captured_frame_batch_preserves_raw_bytes_when_parse_fails() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -326,6 +329,7 @@ fn repeated_captured_frame_batch_import_is_idempotent() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -334,6 +338,7 @@ fn repeated_captured_frame_batch_import_is_idempotent() {
         &frames,
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -366,6 +371,7 @@ fn captured_frame_batch_reports_next_actions_for_invalid_hex_and_empty_input() {
         }],
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
@@ -384,6 +390,7 @@ fn captured_frame_batch_reports_next_actions_for_invalid_hex_and_empty_input() {
         &[],
         CapturedFrameBatchOptions {
             parser_version: "goose-core/test",
+            active_device_id: None,
         },
     )
     .unwrap();
