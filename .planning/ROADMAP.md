@@ -304,14 +304,39 @@ Promoted to Phase 14: pt-PT Localisation.
 
 ### Phase 15: Recovery Formula V2 (SDNN Accuracy)
 
-**Goal:** Corrigir a fórmula `goose_recovery_v0` — renomear `hrvRmssdMs` para `hkHRVSDNNMs` para reflectir a métrica real da Apple Watch, remover a conversão `/1.2` (aproximação populacional SDNN→RMSSD), e normalizar os baselines directamente em SDNN para eliminar desvios individuais no score de recuperação
+**Goal:** Corrigir a fórmula `goose_recovery_v0` — renomear `hrvRmssdMs` para `hkHRVSDNNMs` para reflectir a métrica real da Apple Watch, remover a conversão `/1.2` (aproximação populacional SDNN→RMSSD), e normalizar os baselines directamente em SDNN para eliminar desvios individuais no score de recuperação. Inclui também a implementação de `rmssd_segment_aware` (cálculo fisiologicamente correcto de RMSSD a partir de RR intervals segmentados).
 **Requirements**: TBD
 **Depends on:** Phase 13
-**Reference:** [OKKHALIL3 review comment — PR #5](https://github.com/b-nnett/goose/pull/5#discussion_r3359064144)
-**Plans:** 0 plans
+**Reference:** [OKKHALIL3 review comment — PR #5](https://github.com/b-nnett/goose/pull/5#discussion_r3359064144); [po-sc PR #19 commits 303f329 / rmssd_segment_aware](https://github.com/b-nnett/goose/pull/19#issuecomment-4632805440)
+**Plans:** 1/1 plans complete
+
+**Scope:**
+
+1. `rmssd_segment_aware(segments: &[Vec<f64>], min_pairs: usize) -> Option<f64>` — implementar no `Rust/core/src/metrics.rs`. Calcula RMSSD apenas dentro de cada segmento (janela de captura), nunca entre janelas distintas. Inclui filtro de artefactos (banda 300–2000 ms, regra de Malik 20%). A ausência desta função no fork causa inflação de RMSSD quando existem múltiplas janelas de captura.
+2. Unit tests cobrindo: banda fisiológica (300/2000 ms), regra de Malik (diferença relativa > 20% rejeita o par), invariante cross-window (beats de janelas diferentes nunca são diferenciados).
+3. Renomear `hrvRmssdMs` → `hkHRVSDNNMs`, remover conversão `/1.2`, normalizar baselines em SDNN.
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 15 to break down)
+- [x] TBD (run /gsd-plan-phase 15 to break down) (completed 2026-06-05)
+
+---
+
+### Phase 999.6: body_hex Storage Optimization (BACKLOG)
+
+**Goal:** Eliminar o campo `body_hex` duplicado no cached parsed-payload JSON para frames grandes, reduzindo o tamanho da base de dados e acelerando o batch de métricas.
+
+**Source:** Commit `3eef377` do po-sc (PR #19, [comentário de 2026-06-05](https://github.com/b-nnett/goose/pull/19#issuecomment-4632805440)). No upstream, este fix reduziu ~43 MB num DB de 147 MB no raw-motion stream e tornou o metric batch 27% mais rápido.
+
+**What's needed:**
+
+1. Verificar se o fork duplica `payload_hex` num campo `body_hex` no cached parsed-payload JSON para frames grandes (verificar `Rust/core/src/protocol.rs:515` e o comportamento do `parse_frame_batch` bridge).
+2. Se confirmado: condicionar a inclusão de `body_hex` ao tamanho do frame ou a uma flag `include_body_hex` — excluir para frames de raw-motion (K10/K21) que são volumosos e cujo payload já está em `payload_hex`.
+3. Medir impacto: comparar tamanho da DB e tempo do metric batch antes/depois.
+
+**Why:** Frames de raw-motion gerados durante capture sessions podem crescer a centenas de MB em capturas longas. Remover a duplicação é uma quick-win de storage sem perda de dados.
+
+**Requirements:** TBD
+**Plans:** 0 plans — promote with `/gsd-review-backlog` when ready
 
 ---
