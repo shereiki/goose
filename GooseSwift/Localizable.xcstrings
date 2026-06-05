@@ -341,6 +341,16 @@
         }
       }
     },
+    "All Workouts": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos os Exercícios"
+          }
+        }
+      }
+    },
     "Analysis": {
       "localizations": {
         "pt-PT": {
@@ -977,6 +987,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Conta do Treinador"
+          }
+        }
+      }
+    },
+    "Coach sends the question plus bounded local tool output after approval. Tokens are stored in Keychain.": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Coach envia a pergunta mais a saída limitada de ferramentas locais após aprovação. Os tokens são guardados no Keychain."
           }
         }
       }
@@ -3821,6 +3841,16 @@
         }
       }
     },
+    "Recently Used": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usados Recentemente"
+          }
+        }
+      }
+    },
     "Reconnect": {
       "localizations": {
         "pt-PT": {
@@ -4711,6 +4741,26 @@
         }
       }
     },
+    "Sign in to Coach": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar sessão no Coach"
+          }
+        }
+      }
+    },
+    "Sign in to stream Coach replies and local Goose tool calls.": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar sessão para transmitir respostas do Coach e chamadas de ferramentas locais do Goose."
+          }
+        }
+      }
+    },
     "Sincronizado": {
       "localizations": {
         "pt-PT": {
@@ -4827,6 +4877,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fila"
+          }
+        }
+      }
+    },
+    "Start": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar"
           }
         }
       }
@@ -5267,6 +5327,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Estes dados básicos ajudam o Goose a calcular as tuas métricas locais."
+          }
+        }
+      }
+    },
+    "Thinking": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A pensar..."
           }
         }
       }
@@ -5817,6 +5887,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Problema de Janela"
+          }
+        }
+      }
+    },
+    "Workout": {
+      "localizations": {
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exercício"
           }
         }
       }
