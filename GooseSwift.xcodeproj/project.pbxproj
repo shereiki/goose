@@ -961,7 +961,7 @@
 					"-force_load",
 					"$(SRCROOT)/Rust/$(PLATFORM_NAME)/libgoose_core.a",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.goose.swift;
+				PRODUCT_BUNDLE_IDENTIFIER = com.goose.swift.gen4;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1004,7 +1004,7 @@
 					"-force_load",
 					"$(SRCROOT)/Rust/$(PLATFORM_NAME)/libgoose_core.a",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.goose.swift;
+				PRODUCT_BUNDLE_IDENTIFIER = com.goose.swift.gen4;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
