@@ -154,6 +154,7 @@
 		D10000000000000000000058 /* GooseBLEClient+HRMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */; };
 		D10000000000000000000059 /* GooseBLEReconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000059 /* GooseBLEReconnect.swift */; };
 		D1000000000000000000005A /* HRMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000005A /* HRMonitorView.swift */; };
+		D1000000000000000000005B /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000005B /* Localizable.xcstrings */; };
 		T10000000000000000000001 /* WearableDescriptorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000002 /* WearableDescriptorTests.swift */; };
 		T10000000000000000000002 /* GooseBLETypesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000003 /* GooseBLETypesTests.swift */; };
 		T10000000000000000000003 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = T20000000000000000000005 /* XCTest.framework */; };
@@ -338,6 +339,7 @@
 		D20000000000000000000058 /* GooseBLEClient+HRMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "GooseBLEClient+HRMonitor.swift"; sourceTree = "<group>"; };
 		D20000000000000000000059 /* GooseBLEReconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseBLEReconnect.swift; sourceTree = "<group>"; };
 		D2000000000000000000005A /* HRMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HRMonitorView.swift; sourceTree = "<group>"; };
+		D2000000000000000000005B /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		T20000000000000000000001 /* GooseSwiftTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GooseSwiftTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		T20000000000000000000002 /* WearableDescriptorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearableDescriptorTests.swift; sourceTree = "<group>"; };
 		T20000000000000000000003 /* GooseBLETypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooseBLETypesTests.swift; sourceTree = "<group>"; };
@@ -544,6 +546,7 @@
 				A2000000000000000000000A /* Info.plist */,
 				A20000000000000000000017 /* GooseSwift.entitlements */,
 				A2000000000000000000000F /* Assets.xcassets */,
+				D2000000000000000000005B /* Localizable.xcstrings */,
 			);
 			path = GooseSwift;
 			sourceTree = "<group>";
@@ -684,6 +687,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"pt-PT",
 			);
 			mainGroup = A40000000000000000000001;
 			productRefGroup = A40000000000000000000005 /* Products */;
@@ -703,6 +707,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000000000000000000000B /* Assets.xcassets in Resources */,
+				D1000000000000000000005B /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

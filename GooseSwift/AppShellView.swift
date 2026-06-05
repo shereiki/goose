@@ -89,10 +89,10 @@ enum GooseAppTab: String, CaseIterable, Identifiable {
 
   var title: String {
     switch self {
-    case .home: "Home"
-    case .health: "Health"
-    case .coach: "Coach"
-    case .more: "More"
+    case .home: String(localized: "Home")
+    case .health: String(localized: "Health")
+    case .coach: String(localized: "Coach")
+    case .more: String(localized: "More")
     }
   }
 

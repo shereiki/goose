@@ -1,0 +1,626 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Home" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Início"
+          }
+        }
+      }
+    },
+    "Health" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saúde"
+          }
+        }
+      }
+    },
+    "Coach" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Treinador"
+          }
+        }
+      }
+    },
+    "More" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mais"
+          }
+        }
+      }
+    },
+    "Profile" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perfil"
+          }
+        }
+      }
+    },
+    "Device" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispositivo"
+          }
+        }
+      }
+    },
+    "HR Monitor" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitor FC"
+          }
+        }
+      }
+    },
+    "Connection Lab" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laboratório de Ligação"
+          }
+        }
+      }
+    },
+    "Capture" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Captura"
+          }
+        }
+      }
+    },
+    "Local Store" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Armazenamento Local"
+          }
+        }
+      }
+    },
+    "Apple Health Profile" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perfil Apple Health"
+          }
+        }
+      }
+    },
+    "Raw Export" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportação Bruta"
+          }
+        }
+      }
+    },
+    "Algorithms" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algoritmos"
+          }
+        }
+      }
+    },
+    "Debug" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depuração"
+          }
+        }
+      }
+    },
+    "Privacy" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privacidade"
+          }
+        }
+      }
+    },
+    "Remote Server" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidor Remoto"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suporte"
+          }
+        }
+      }
+    },
+    "About" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca"
+          }
+        }
+      }
+    },
+    "Developer" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programador"
+          }
+        }
+      }
+    },
+    "Recovery" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recuperação"
+          }
+        }
+      }
+    },
+    "Sleep" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sono"
+          }
+        }
+      }
+    },
+    "Connect" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligar"
+          }
+        }
+      }
+    },
+    "Disconnect" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desligar"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Concluído"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Definições"
+          }
+        }
+      }
+    },
+    "Export" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exportar"
+          }
+        }
+      }
+    },
+    "Import" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importar"
+          }
+        }
+      }
+    },
+    "Sync Error" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erro de Sincronização"
+          }
+        }
+      }
+    },
+    "Dismiss" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispensar"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tentar novamente"
+          }
+        }
+      }
+    },
+    "Loading" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A carregar..."
+          }
+        }
+      }
+    },
+    "Scanning" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A procurar..."
+          }
+        }
+      }
+    },
+    "Connected" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligado"
+          }
+        }
+      }
+    },
+    "Connecting" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A ligar..."
+          }
+        }
+      }
+    },
+    "Disconnected" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desligado"
+          }
+        }
+      }
+    },
+    "No devices found" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum dispositivo encontrado"
+          }
+        }
+      }
+    },
+    "DISCOVERED" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DESCOBERTOS"
+          }
+        }
+      }
+    },
+    "CONNECTED" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LIGADO"
+          }
+        }
+      }
+    },
+    "SCANNING" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A PROCURAR"
+          }
+        }
+      }
+    },
+    "CONNECTING" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A LIGAR"
+          }
+        }
+      }
+    },
+    "NOT AUTHORISED" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NÃO AUTORIZADO"
+          }
+        }
+      }
+    },
+    "BLUETOOTH OFF" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "BLUETOOTH DESLIGADO"
+          }
+        }
+      }
+    },
+    "HEART RATE" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FREQUÊNCIA CARDÍACA"
+          }
+        }
+      }
+    },
+    "Resting HRV" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VFC em Repouso"
+          }
+        }
+      }
+    },
+    "Resting HR" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FC em Repouso"
+          }
+        }
+      }
+    },
+    "Refresh Device" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualizar Dispositivo"
+          }
+        }
+      }
+    },
+    "Name, birthday, height, weight, and profile basics" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome, data de nascimento, altura, peso e informações básicas do perfil"
+          }
+        }
+      }
+    },
+    "WHOOP band, connection, battery, and pairing" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banda WHOOP, ligação, bateria e emparelhamento"
+          }
+        }
+      }
+    },
+    "Connect and view live heart rate from a Bluetooth HR monitor" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligar e ver a frequência cardíaca em tempo real de um monitor FC Bluetooth"
+          }
+        }
+      }
+    },
+    "Low-level Bluetooth, hello, and event diagnostics" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth de baixo nível, hello e diagnósticos de eventos"
+          }
+        }
+      }
+    },
+    "Notification capture, imports, and command evidence" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Captura de notificações, importações e evidência de comandos"
+          }
+        }
+      }
+    },
+    "SQLite path, schema, and storage health" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caminho SQLite, esquema e estado do armazenamento"
+          }
+        }
+      }
+    },
+    "Profile weight autofill only" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preenchimento automático do peso do perfil apenas"
+          }
+        }
+      }
+    },
+    "Bundle windows, data scopes, validation, and lint" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Janelas de pacotes, âmbitos de dados, validação e lint"
+          }
+        }
+      }
+    },
+    "Operational algorithm preferences" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preferências de algoritmos operacionais"
+          }
+        }
+      }
+    },
+    "Rust, parser, command groups, and gated controls" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rust, parser, grupos de comandos e controlos restritos"
+          }
+        }
+      }
+    },
+    "Local data, export, lint, and deletion state" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dados locais, exportação, lint e estado de eliminação"
+          }
+        }
+      }
+    },
+    "Server URL, API key, and upload toggle" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "URL do servidor, chave API e alternância de envio"
+          }
+        }
+      }
+    },
+    "Logs, support bundles, and troubleshooting" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Registos, pacotes de suporte e resolução de problemas"
+          }
+        }
+      }
+    },
+    "App, Rust core, and licenses" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App, núcleo Rust e licenças"
+          }
+        }
+      }
+    },
+    "Capture, exports, bridge diagnostics, and debug tools" : {
+      "localizations" : {
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Captura, exportações, diagnósticos de bridge e ferramentas de depuração"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
