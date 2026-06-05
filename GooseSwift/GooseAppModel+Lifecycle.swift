@@ -140,6 +140,10 @@ extension GooseAppModel {
     refreshOvernightReadiness(reason: "ble_ready")
     schedulePassiveActivityCapture(reason: "ble_ready")
     scheduleAutoStartRespiratoryPacketWatchIfNeeded()
+    if ble.canSyncClock {
+      ble.writeClockCommand(.get, syncIfNeeded: true)
+      ble.record(source: "ble.clock", title: "clock.auto_sync.triggered", body: "state=ready")
+    }
   }
 
   func schedulePassiveActivityCapture(reason: String) {
