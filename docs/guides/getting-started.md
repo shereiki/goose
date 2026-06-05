@@ -13,7 +13,7 @@ This guide walks you from zero to a running Goose build with a connected WHOOP d
 |---|---|---|
 | macOS with Xcode | Xcode with iOS 26 SDK | Required to build the app |
 | iOS 26 SDK | 26.0 | Must be installed inside Xcode |
-| Apple Developer account | Any (free or paid) | Required for signing; bundle ID is `com.goose.swift` |
+| Apple Developer account | Any (free or paid) | Required for signing; bundle ID is `com.tigercraft4.goose` |
 | Rust toolchain | MSRV 1.96 | Install via [rustup.rs](https://rustup.rs) |
 | Cargo | Comes with rustup | Used by the Xcode build phase |
 | iOS Rust targets | See below | Three targets required |
@@ -90,7 +90,7 @@ xcrun devicectl device install app \
 xcrun devicectl device process launch \
   --device <device-id> \
   --terminate-existing \
-  com.goose.swift
+  com.tigercraft4.goose
 ```
 
 ---

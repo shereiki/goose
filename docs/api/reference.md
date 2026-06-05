@@ -481,15 +481,16 @@ All fields except `device` are optional. `sex` must be one of `"male"`, `"female
 
 ## Rust Bridge FFI API
 
-The Rust bridge exposes all core logic — protocol parsing, metric computation, SQLite persistence — as a single JSON-over-FFI RPC layer. The Swift app calls it synchronously via two C symbols from `libgoose_core.a`.
+The Rust bridge exposes all core logic — protocol parsing, metric computation, SQLite persistence — as a single JSON-over-FFI RPC layer. The Swift app calls it synchronously via three C symbols from `libgoose_core.a`.
 
 ### C Function Signatures
 
-Declared in `GooseSwift/GooseSwift-Bridging-Header.h`:
+Declared in `Rust/core/include/goose_core_bridge.h` (included via `GooseSwift/GooseSwift-Bridging-Header.h`):
 
 ```c
-char *goose_bridge_handle_json(const char *request_json);
-void  goose_bridge_free_string(char *ptr);
+const char *goose_bridge_handle_json(const char *request_json);
+void        goose_bridge_free_string(char *value);
+const char *goose_core_version_json(void);
 ```
 
 `goose_bridge_handle_json` is synchronous and blocks the calling thread until complete. Never call it from the main thread or any `@MainActor` context for expensive methods — always dispatch to a background queue first.

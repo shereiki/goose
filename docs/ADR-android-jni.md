@@ -24,7 +24,7 @@ This approach avoids workspace complexity, keeps the bridge contract in one file
 
 ### 2. Panic strategy
 
-The `[profile.release]` section of `Cargo.toml` already sets `panic = "abort"` globally. Android release builds inherit this setting automatically — no `.cargo/config.toml` override is needed. On Android, a panic that unwinds through a JNI boundary causes undefined behavior; `panic = "abort"` terminates the process cleanly instead. The JNI shim itself is written defensively: all error paths return error JSON or `null_mut()` rather than panicking.
+The `[profile.release]` section of `Cargo.toml` sets `panic = "unwind"` (required so that the FFI boundary's `catch_unwind` in `bridge.rs` can convert Rust panics into structured JSON errors instead of aborting the process). On Android, an **unhandled** panic that unwinds through a JNI boundary causes undefined behavior — but the JNI shim wraps every call in `catch_unwind`, so panics are caught before they reach the JNI boundary. All error paths in the shim return error JSON or `null_mut()` rather than panicking, so no unwind crosses into Java. A `.cargo/config.toml` override to `panic = "abort"` is not needed and would break the `catch_unwind` safety net in the iOS build.
 
 ### 3. MUTF-8 string handling policy
 
