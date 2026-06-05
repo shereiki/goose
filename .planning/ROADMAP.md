@@ -401,7 +401,14 @@ Plans:
   5. Existing single OpenAI key is automatically migrated to a named account on first launch
   6. Streaming responses work for all supported providers
 
-**Plans**: TBD
+**Plans**: 6 plans (6 waves)
+
+- [ ] 18-01-PLAN.md — Wave 1: CoachProvider protocol + CoachProviderRegistry + CoachChatModel refactor + ChatGPTCoachProvider + Wave 0 test stubs (COACH-01, COACH-06)
+- [ ] 18-02-PLAN.md — Wave 2: ClaudeCoachProvider (Anthropic Messages API SSE + Keychain) (COACH-02, COACH-03)
+- [ ] 18-03-PLAN.md — Wave 3: CustomEndpointCoachProvider (OpenAI Chat Completions SSE + URL validation + Keychain) (COACH-02, COACH-04)
+- [ ] 18-04-PLAN.md — Wave 4: GeminiCoachProvider (Google OAuth PKCE via WKWebView + streamGenerateContent SSE) (COACH-02, COACH-03)
+- [ ] 18-05-PLAN.md — Wave 5: CoachSettingsSheet provider picker UI + gear icon + four-provider registry (COACH-05)
+- [ ] 18-06-PLAN.md — Wave 6: Integration, build/test verification, migration smoke test (COACH-01, COACH-05, COACH-06)
 
 ## Progress
 
@@ -416,5 +423,5 @@ Plans:
 | 14. pt-PT Localisation | v3.0 | 4/4 | Complete | 2026-06-05 |
 | 15. Recovery Formula V2 SDNN | v3.0 | 1/1 | Complete | 2026-06-05 |
 | 16. Deep Link Security | v4.0 | 1/0 | Complete    | 2026-06-05 |
-| 17. @Observable Migration | v4.0 | 0/4 | Planned | - |
-| 18. Coach Multi-Provider | v4.0 | 0/? | Not started | - |
+| 17. @Observable Migration | v4.0 | 4/4 | Complete | 2026-06-05 |
+| 18. Coach Multi-Provider | v4.0 | 0/6 | Planned | - |
