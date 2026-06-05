@@ -4,10 +4,18 @@ struct CoachView: View {
   @Environment(GooseAppModel.self) private var model
   @EnvironmentObject private var router: AppRouter
   var healthStore: HealthDataStore
-  @StateObject private var chat = OpenAICoachChatModel()
+  @State private var registry = CoachProviderRegistry()
+  @State private var chat: CoachChatModel
   @State private var promptDraft = ""
   @State private var appliedCoachPromptRequestID = 0
   @State private var showingChat = false
+
+  init(healthStore: HealthDataStore) {
+    self.healthStore = healthStore
+    let registry = CoachProviderRegistry()
+    self._registry = State(initialValue: registry)
+    self._chat = State(initialValue: CoachChatModel(registry: registry))
+  }
 
   var body: some View {
     CoachOverviewScreen(
@@ -629,7 +637,7 @@ private extension View {
 }
 
 private struct CoachProfileMenu: View {
-  @ObservedObject var chat: OpenAICoachChatModel
+  var chat: CoachChatModel
 
   var body: some View {
     Menu {
@@ -638,7 +646,7 @@ private struct CoachProfileMenu: View {
           Button {
             chat.selectModelPreset(preset)
           } label: {
-            if chat.modelPreset == preset {
+            if chat.activePreset == preset {
               Label(preset.title, systemImage: "checkmark")
             } else {
               Text(preset.title)
