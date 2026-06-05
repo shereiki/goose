@@ -44,7 +44,7 @@ Known deferred: WEAR-02 scan UI (v3.0), CR-02 per-row filter (v3.0), hardware BL
 - [x] **Phase 11: HR Monitor Independent Capture** — HR session decoupled from WHOOP session gate (completed 2026-06-05)
 - [x] **Phase 12: WHOOP 4.0 RTC Clock Sync** — Auto-sync iPhone time to WHOOP 4.0 after connect (completed 2026-06-05)
 - [x] **Phase 13: Recovery V2 Dashboard** — Hero score, HRV, RHR, 7-day trend backed by bridge data (completed 2026-06-05)
-- [ ] **Phase 14: pt-PT Localisation** — Static catalog + dynamic status strings in European Portuguese
+- [x] **Phase 14: pt-PT Localisation** — Static catalog + dynamic status strings in European Portuguese (completed 2026-06-05)
 
 ## Phase Details
 
@@ -180,19 +180,19 @@ Plans:
 
 **Wave 1**
 
-- [ ] 14-01-PLAN.md — Infrastructure: create Localizable.xcstrings, register pt-PT in project.pbxproj, fix GooseAppTab.title + MoreRoute.title/subtitle to String(localized:), translate tab + More-route titles/subtitles (L10N-01)
+- [x] 14-01-PLAN.md — Infrastructure: create Localizable.xcstrings, register pt-PT in project.pbxproj, fix GooseAppTab.title + MoreRoute.title/subtitle to String(localized:), translate tab + More-route titles/subtitles (L10N-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 14-02-PLAN.md — Static catalog translations: Home dashboard, Health families (Recovery V2, Sleep V2, Cardio, Strain, Stress), Coach view (~150 strings) (L10N-01)
+- [x] 14-02-PLAN.md — Static catalog translations: Home dashboard, Health families (Recovery V2, Sleep V2, Cardio, Strain, Stress), Coach view (~150 strings) (L10N-01)
 
 **Wave 3** *(blocked on Wave 2 completion — shared Localizable.xcstrings)*
 
-- [ ] 14-03-PLAN.md — Static catalog translations: More tab, Connection/Device/HR Monitor, Capture/Debug/Raw Export, Onboarding (~150 strings) (L10N-01)
+- [x] 14-03-PLAN.md — Static catalog translations: More tab, Connection/Device/HR Monitor, Capture/Debug/Raw Export, Onboarding (~150 strings) (L10N-01)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 14-04-PLAN.md — LocalizedStatusStrings.swift (14 @Published display extensions, D-04) + display-site rewiring + MoreStatusKind.title + final sweep + xcodebuild verification (L10N-02)
+- [x] 14-04-PLAN.md — LocalizedStatusStrings.swift (14 @Published display extensions, D-04) + display-site rewiring + MoreStatusKind.title + final sweep + xcodebuild verification (L10N-02)
 
 ## Progress
 
@@ -213,7 +213,7 @@ Plans:
 | 11. HR Monitor Independent Capture | v3.0 | 2/2 | Complete    | 2026-06-05 |
 | 12. WHOOP 4.0 RTC Clock Sync | v3.0 | 1/1 | Complete    | 2026-06-05 |
 | 13. Recovery V2 Dashboard | v3.0 | 1/1 | Complete    | 2026-06-05 |
-| 14. pt-PT Localisation | v3.0 | 0/4 | Not started | - |
+| 14. pt-PT Localisation | v3.0 | 4/4 | Complete    | 2026-06-05 |
 
 ## Backlog
 
@@ -234,7 +234,7 @@ Plans:
 **Scope:** Large refactor (~150 files). Safe to defer — existing behaviour is correct, only performance of re-renders is affected.
 
 **Requirements:** TBD
-**Plans:** 1/1 plans complete
+**Plans:** 4/4 plans complete
 
 ---
 
