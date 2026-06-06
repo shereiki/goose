@@ -21,9 +21,11 @@ final class CoachProviderRegistry {
   private(set) var activeProvider: (any CoachProvider)?
 
   init() {
-    // Wave 2-4: append ClaudeCoachProvider/CustomEndpointCoachProvider/GeminiCoachProvider here
     let chatGPT = ChatGPTCoachProvider()
-    allProviders = [chatGPT]
+    let claude = ClaudeCoachProvider()
+    let custom = CustomEndpointCoachProvider()
+    let gemini = GeminiCoachProvider()
+    allProviders = [chatGPT, claude, custom, gemini]
 
     let storedID = UserDefaults.standard.string(forKey: Self.activeProviderDefaultsKey)
     if let storedID, let match = allProviders.first(where: { $0.id == storedID }) {
