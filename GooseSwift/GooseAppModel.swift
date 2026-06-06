@@ -92,6 +92,7 @@ final class GooseAppModel: ObservableObject {
   var activeActivityOwnsCaptureSession = false
   var activityRequestedHighFrequencyHistorySync = false
   var activeHealthPacketCapture: ActiveHealthPacketCapture?
+  var historicalSyncAutoCapture = false
   let overnightRawSpool = OvernightRawNotificationSpool()
   var overnightGuardSession: OvernightGuardSession?
   var overnightGuardHeartbeatWorkItem: DispatchWorkItem?

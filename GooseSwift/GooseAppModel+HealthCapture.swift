@@ -309,11 +309,37 @@ extension GooseAppModel {
   func handleHistoricalSyncProgress(_ progress: GooseHistoricalSyncProgress) {
     handleOvernightHistoricalSyncProgress(progress)
     
-    // Auto-trigger scoring when sync completes successfully
+    // Auto-start capture when historical sync begins. Without an active capture
+    // session, incoming BLE frames flow through the live UI pipeline but are never
+    // written to the SQLite database — so runPacketInputs/runPacketScores have
+    // nothing to read and every metric shows "Unavailable".
+    if !progress.isTerminal && !progress.failed && progress.packetCount == 0
+        && activeHealthPacketCapture == nil && ble.connectionState == "ready" {
+      startHealthPacketCapture(mode: .physiology, duration: 7200, source: "sync.auto")
+      historicalSyncAutoCapture = true
+    }
+    
+    // Auto-trigger scoring when sync completes successfully.
+    // Stop the auto-started capture first (so all DB writes flush), then run the
+    // input extraction + score computation pipeline from the collected data.
     if progress.isTerminal && !progress.failed && progress.packetCount > 0 {
-      healthStore?.runPacketInputs { [weak healthStore] in
-        healthStore?.runPacketScores()
+      if historicalSyncAutoCapture {
+        stopHealthPacketCapture(reason: "sync.complete")
+        historicalSyncAutoCapture = false
       }
+      // Brief delay to let the capture finish_session DB flush complete
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        guard let self, let healthStore = self.healthStore else { return }
+        healthStore.runPacketInputs { [weak healthStore] in
+          healthStore?.runPacketScores()
+        }
+      }
+    }
+    
+    // If the sync fails, clean up the auto-capture
+    if progress.failed && historicalSyncAutoCapture {
+      stopHealthPacketCapture(reason: "sync.failed")
+      historicalSyncAutoCapture = false
     }
     
     guard respiratoryPacketWatchActive else {
