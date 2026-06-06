@@ -597,14 +597,8 @@ struct OnboardingView: View {
 
   private func shouldSkip(_ candidate: OnboardingStep) -> Bool {
     switch candidate {
-    case .profile:
+    case .profile, .connect:
       return false
-    case .connect:
-#if DEBUG
-      return true
-#else
-      return false
-#endif
     case .healthKit:
       return healthKitPermissionHandled || !HKHealthStore.isHealthDataAvailable()
     case .location:
