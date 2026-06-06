@@ -17,6 +17,9 @@ struct AppShellView: View {
         .tag(tab)
       }
     }
+    .onAppear {
+      model.healthStore = healthStore
+    }
   }
 
   private var tabSelection: Binding<GooseAppTab> {

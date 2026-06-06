@@ -36,6 +36,7 @@ final class HealthDataStore: ObservableObject {
   var packetScoreIsRunning = false
   var heartRateTimelineRefreshID: UUID?
   var heartRateSeriesUpdateObserver: NSObjectProtocol?
+  var syncCompleteObserver: NSObjectProtocol?
   let packetInputQueue = DispatchQueue(label: "com.goose.swift.health.packet-inputs", qos: .utility)
   let packetScoreQueue = DispatchQueue(label: "com.goose.swift.health.packet-scores", qos: .utility)
   let heartRateTimelineQueue = DispatchQueue(label: "com.goose.swift.health.heart-rate-timeline", qos: .utility)

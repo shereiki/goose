@@ -308,6 +308,14 @@ extension GooseAppModel {
 
   func handleHistoricalSyncProgress(_ progress: GooseHistoricalSyncProgress) {
     handleOvernightHistoricalSyncProgress(progress)
+    
+    // Auto-trigger scoring when sync completes successfully
+    if progress.isTerminal && !progress.failed && progress.packetCount > 0 {
+      healthStore?.runPacketInputs { [weak healthStore] in
+        healthStore?.runPacketScores()
+      }
+    }
+    
     guard respiratoryPacketWatchActive else {
       return
     }

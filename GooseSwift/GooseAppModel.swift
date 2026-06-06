@@ -53,6 +53,7 @@ final class GooseAppModel: ObservableObject {
   @Published var overnightGuardCanExportLastSession = false
 
   let ble: GooseBLEClient
+  weak var healthStore: HealthDataStore?
   let packetMonitor = PacketMonitorModel()
   let activitySession = ActivitySessionModel()
   let activityLocationTracker = ActivityLocationTracker()
