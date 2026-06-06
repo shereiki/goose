@@ -1,23 +1,47 @@
 import XCTest
 @testable import GooseSwift
 
+@MainActor
 final class CoachProviderTests: XCTestCase {
 
   // MARK: - COACH-01: CoachProvider protocol shape (compile-time proof)
 
   func testCoachProviderProtocolHasRequiredMembers() {
-    let provider: any CoachProvider = ChatGPTCoachProvider()
-    XCTAssertFalse(provider.id.isEmpty, "provider.id must be non-empty")
-    XCTAssertFalse(provider.displayName.isEmpty, "provider.displayName must be non-empty")
-    // isAuthenticated: Bool — just accessing is a compile-time proof
-    _ = provider.isAuthenticated
-    // availablePresets: [CoachModelPreset] — must be accessible and non-empty for ChatGPT
-    XCTAssertFalse(provider.availablePresets.isEmpty, "ChatGPTCoachProvider.availablePresets must be non-empty")
+    let registry = CoachProviderRegistry()
+    XCTAssertEqual(registry.allProviders.count, 4, "Registry must expose exactly four providers")
+
+    for provider in registry.allProviders {
+      XCTAssertFalse(provider.id.isEmpty, "\(provider.id): provider.id must be non-empty")
+      XCTAssertFalse(
+        provider.displayName.isEmpty,
+        "\(provider.id): provider.displayName must be non-empty"
+      )
+
+      // isAuthenticated: Bool — accessing is a compile-time proof
+      _ = provider.isAuthenticated
+
+      // availablePresets accessible for all providers (non-empty for ChatGPT/Claude/Gemini;
+      // Custom may be empty until model ID is configured — assert accessible only)
+      let presets = provider.availablePresets
+      if provider.id == "custom" {
+        _ = presets
+      } else {
+        XCTAssertFalse(
+          presets.isEmpty,
+          "\(provider.id): availablePresets must be non-empty"
+        )
+      }
+    }
   }
 
-  func testSendReturnsAsyncStreamShape() throws {
-    // Wave 1: the AsyncStream<String> return type is proven at compile time by the protocol conformance.
-    // A live network call is required to exercise the stream; skip in CI.
-    throw XCTSkip("Wave 1: requires network; AsyncStream shape proven by compile")
+  // MARK: - COACH-01: send() returns AsyncStream<String> (compile-time type assertion)
+
+  func testSendSignatureMatchesAsyncStream() {
+    // Prove at compile time that send(messages:systemPrompt:preset:) returns
+    // AsyncStream<String> without making any network call.
+    let provider: any CoachProvider = ChatGPTCoachProvider()
+    // Assigning send to a typed local variable is a compile-time proof of the signature.
+    let _: ([CoachChatMessage], String, CoachModelPreset) async throws -> AsyncStream<String> = provider.send
+    XCTAssertTrue(true, "AsyncStream<String> return type proven at compile time")
   }
 }
