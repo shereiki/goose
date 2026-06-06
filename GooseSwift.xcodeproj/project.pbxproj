@@ -173,6 +173,7 @@
 		T1000000000000000000000A /* CustomEndpointProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000000000000000000000C /* CustomEndpointProviderTests.swift */; };
 		E1000000000000000000006 /* GeminiCoachProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000006 /* GeminiCoachProvider.swift */; };
 		E1000000000000000000007 /* GeminiOAuthWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000007 /* GeminiOAuthWebView.swift */; };
+		E1000000000000000000008 /* CoachSettingsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000008 /* CoachSettingsSheet.swift */; };
 		T1000000000000000000000B /* GeminiProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000000000000000000000D /* GeminiProviderTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -374,6 +375,7 @@
 		T2000000000000000000000C /* CustomEndpointProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomEndpointProviderTests.swift; sourceTree = "<group>"; };
 		E2000000000000000000006 /* GeminiCoachProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiCoachProvider.swift; sourceTree = "<group>"; };
 		E2000000000000000000007 /* GeminiOAuthWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiOAuthWebView.swift; sourceTree = "<group>"; };
+		E2000000000000000000008 /* CoachSettingsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachSettingsSheet.swift; sourceTree = "<group>"; };
 		T2000000000000000000000D /* GeminiProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiProviderTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -575,6 +577,7 @@
 				E2000000000000000000005 /* CustomEndpointCoachProvider.swift */,
 				E2000000000000000000006 /* GeminiCoachProvider.swift */,
 				E2000000000000000000007 /* GeminiOAuthWebView.swift */,
+				E2000000000000000000008 /* CoachSettingsSheet.swift */,
 				D20000000000000000000037 /* GooseBLEClient+Parsing.swift */,
 				D20000000000000000000038 /* GooseBLEClient+CentralDelegate.swift */,
 				D20000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift */,
@@ -915,6 +918,7 @@
 				E1000000000000000000005 /* CustomEndpointCoachProvider.swift in Sources */,
 				E1000000000000000000006 /* GeminiCoachProvider.swift in Sources */,
 				E1000000000000000000007 /* GeminiOAuthWebView.swift in Sources */,
+				E1000000000000000000008 /* CoachSettingsSheet.swift in Sources */,
 				A1000000000000000000002D /* OpenAICoachResponsesClient.swift in Sources */,
 				A10000000000000000000040 /* CoachLocalToolContext.swift in Sources */,
 				A10000000000000000000027 /* CoachTips.swift in Sources */,
