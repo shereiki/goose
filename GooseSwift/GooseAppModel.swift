@@ -282,7 +282,7 @@ final class GooseAppModel: ObservableObject {
   static let healthPacketCaptureSummaryLogInterval: TimeInterval = 10
   static let parsedFrameSummaryUpdateInterval: TimeInterval = 1
   static let heartRateHourlyRangePublishInterval: TimeInterval = 1
-  static let packetUIStatePublishInterval: TimeInterval = 0.2
+  static let packetUIStatePublishInterval: TimeInterval = 1.0
   static let restingHeartRateFrameWriteInterval: TimeInterval = 0.1
   static let captureFrameWriteQueueMaxRows = 2048
   static let captureFrameWriteBatchMaxRows = 128
