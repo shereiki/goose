@@ -165,6 +165,7 @@
 		E1000000000000000000002 /* CoachChatModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000002 /* CoachChatModel.swift */; };
 		E1000000000000000000003 /* ChatGPTCoachProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000003 /* ChatGPTCoachProvider.swift */; };
 		E1000000000000000000004 /* ClaudeCoachProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000004 /* ClaudeCoachProvider.swift */; };
+		E1000000000000000000005 /* CustomEndpointCoachProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000005 /* CustomEndpointCoachProvider.swift */; };
 		T10000000000000000000006 /* CoachProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000008 /* CoachProviderTests.swift */; };
 		T10000000000000000000007 /* CoachProviderRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20000000000000000000009 /* CoachProviderRegistryTests.swift */; };
 		T10000000000000000000008 /* CoachKeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000000000000000000000A /* CoachKeychainTests.swift */; };
@@ -362,6 +363,7 @@
 		E2000000000000000000002 /* CoachChatModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachChatModel.swift; sourceTree = "<group>"; };
 		E2000000000000000000003 /* ChatGPTCoachProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGPTCoachProvider.swift; sourceTree = "<group>"; };
 		E2000000000000000000004 /* ClaudeCoachProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCoachProvider.swift; sourceTree = "<group>"; };
+		E2000000000000000000005 /* CustomEndpointCoachProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomEndpointCoachProvider.swift; sourceTree = "<group>"; };
 		T20000000000000000000008 /* CoachProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachProviderTests.swift; sourceTree = "<group>"; };
 		T20000000000000000000009 /* CoachProviderRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachProviderRegistryTests.swift; sourceTree = "<group>"; };
 		T2000000000000000000000A /* CoachKeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachKeychainTests.swift; sourceTree = "<group>"; };
@@ -564,6 +566,7 @@
 				E2000000000000000000002 /* CoachChatModel.swift */,
 				E2000000000000000000003 /* ChatGPTCoachProvider.swift */,
 				E2000000000000000000004 /* ClaudeCoachProvider.swift */,
+				E2000000000000000000005 /* CustomEndpointCoachProvider.swift */,
 				D20000000000000000000037 /* GooseBLEClient+Parsing.swift */,
 				D20000000000000000000038 /* GooseBLEClient+CentralDelegate.swift */,
 				D20000000000000000000039 /* GooseBLEClient+PeripheralDelegate.swift */,
@@ -900,6 +903,7 @@
 				E1000000000000000000002 /* CoachChatModel.swift in Sources */,
 				E1000000000000000000003 /* ChatGPTCoachProvider.swift in Sources */,
 				E1000000000000000000004 /* ClaudeCoachProvider.swift in Sources */,
+				E1000000000000000000005 /* CustomEndpointCoachProvider.swift in Sources */,
 				A1000000000000000000002D /* OpenAICoachResponsesClient.swift in Sources */,
 				A10000000000000000000040 /* CoachLocalToolContext.swift in Sources */,
 				A10000000000000000000027 /* CoachTips.swift in Sources */,
