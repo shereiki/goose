@@ -36,7 +36,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=18.0 \
-            OTHER_SWIFT_FLAGS="\$(inherited) -enable-experimental-feature IsolatedDeinit" \
             build
       
       - name: Package IPA

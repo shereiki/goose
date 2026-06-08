@@ -392,7 +392,7 @@ final class GooseAppModel {
     }
   }
 
-  @MainActor deinit {
+  deinit {
     activityDetectionIdleWorkItem?.cancel()
     movementPacketValidationTimeoutWorkItem?.cancel()
     packetImportRevisionWorkItem?.cancel()
