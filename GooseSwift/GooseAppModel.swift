@@ -393,30 +393,29 @@ final class GooseAppModel {
   }
 
   deinit {
-    activityDetectionIdleWorkItem?.cancel()
-    movementPacketValidationTimeoutWorkItem?.cancel()
-    packetImportRevisionWorkItem?.cancel()
-    healthPacketCaptureTimeoutWorkItem?.cancel()
-    healthPacketCaptureStreamRetryWorkItem?.cancel()
-    healthPacketCaptureUIUpdateWorkItem?.cancel()
-    respiratoryPacketWatchTimeoutWorkItem?.cancel()
-    autoStartRespiratoryPacketWatchWorkItem?.cancel()
-    temperatureHistorySyncWorkItem?.cancel()
-    autoStartHealthPacketCaptureWorkItem?.cancel()
-    passiveActivityCaptureWorkItem?.cancel()
-    overnightGuardHeartbeatWorkItem?.cancel()
-    overnightGuardRangePollWorkItem?.cancel()
-    overnightGuardFinalSyncDrainWorkItem?.cancel()
-    if overnightGuardCriticalBackgroundTaskID != .invalid {
-      let backgroundTaskID = overnightGuardCriticalBackgroundTaskID
-      Task { @MainActor in
-        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+    MainActor.assumeIsolated {
+      activityDetectionIdleWorkItem?.cancel()
+      movementPacketValidationTimeoutWorkItem?.cancel()
+      packetImportRevisionWorkItem?.cancel()
+      healthPacketCaptureTimeoutWorkItem?.cancel()
+      healthPacketCaptureStreamRetryWorkItem?.cancel()
+      healthPacketCaptureUIUpdateWorkItem?.cancel()
+      respiratoryPacketWatchTimeoutWorkItem?.cancel()
+      autoStartRespiratoryPacketWatchWorkItem?.cancel()
+      temperatureHistorySyncWorkItem?.cancel()
+      autoStartHealthPacketCaptureWorkItem?.cancel()
+      passiveActivityCaptureWorkItem?.cancel()
+      overnightGuardHeartbeatWorkItem?.cancel()
+      overnightGuardRangePollWorkItem?.cancel()
+      overnightGuardFinalSyncDrainWorkItem?.cancel()
+      if overnightGuardCriticalBackgroundTaskID != .invalid {
+        UIApplication.shared.endBackgroundTask(overnightGuardCriticalBackgroundTaskID)
       }
-    }
-    if overnightRawSpool.isActive {
-      _ = overnightRawSpool.suspendActive(reason: "model_deinit")
-    } else {
-      _ = overnightRawSpool.finish(status: "model_deinit")
+      if overnightRawSpool.isActive {
+        _ = overnightRawSpool.suspendActive(reason: "model_deinit")
+      } else {
+        _ = overnightRawSpool.finish(status: "model_deinit")
+      }
     }
   }
 
